@@ -1,6 +1,6 @@
 # FirstVisit — Pivot Plan (draft, pending confirmation)
 
-> English version of [PLAN.md](PLAN.md). This is a translation of the 15:54 EST draft. It does not include later code progress.
+> English version of [PLAN.md](PLAN.md). Sections 2 and 4 were updated at 17:30 EST to match the current code; the other sections are the 15:54 draft.
 
 > Deadline: Sunday, 2026-11-08, 11:00 AM EST. It is now about 4 PM Saturday, leaving about 19 hours, which must also cover sleep, recording the video, and submitting.
 
@@ -13,7 +13,21 @@
 - **How we differ from competitors**: Docus, Guava and ChatGPT Health interpret labs and medical records; Zocdoc books doctors. We guide the process before and after a visit, and our privacy can be proven: the search service only learns that "someone near 02115 is looking for urgent care", not why.
 - **Out of scope**: diagnosis, lab interpretation, medical-record integrations, automatic booking, and healthcare systems outside the US.
 
-## 2. MVP demo flow (5 screens)
+## 2. Three scenarios (the product's main path)
+
+The first question is "Do you have health insurance?" The answer splits the user into one of three paths. All three share the same Unperson foundation: the encrypted vault, the egress gateway and ledger, the local model, and the privacy proof.
+
+| Scenario | Who | What the app does | How cost is calculated | Code status |
+|---|---|---|---|---|
+| **A. Has insurance** | Students already on the student health plan or another plan | Enter their plan and benefits → calculate a personal cost at each provider → compare with self-pay and use the lower supported amount | Copay, or deductible + coinsurance + out-of-pocket limit (`benefits.insured_cost`) | ✅ Built: `insurance=yes` |
+| **B. No insurance, self-pay** | Not yet insured, or paying cash for this visit | Show self-pay prices only; a missing quote is shown as "unknown", never as $0 | Self-pay price (`benefits.cash_cost`) | ✅ Built: `insurance=no`, `wants_insurance=false` |
+| **C. No insurance, choosing a plan** | Deciding whether to buy coverage and which plan | Show self-pay next to "a candidate plan + N premium payments"; a negative saving is shown as a higher cost | One visit + N premium payments (`benefits.comparison`); no subsidy or eligibility inference | ✅ Built: `insurance=no`, `wants_insurance=true` |
+
+All three share the later steps: find nearby providers → add quotes and network confirmation → prepare the visit → track the appointment → privacy proof.
+
+> Note: all three scenarios currently cover adult primary care only (appointments and follow-ups). The triage and bill explanation listed below are not yet connected to the UI.
+
+## 2b. Original MVP demo flow (draft, partly unbuilt)
 
 1. **Encrypted vault**: set a passphrase. No account, no server.
 2. **My information**: name, date of birth, native language, allergies, medications and medical history (never sent); city, state and ZIP (sent when finding clinics); insurer name (the user chooses whether it is sent); member ID and group number (never sent); copays, deductible and coinsurance copied from the insurance card or SBC.
@@ -45,8 +59,20 @@ This also fixes the issues raised in the Unperson assessment: URLs are no longer
 Reuse directly: the encrypted vault, the egress gateway (offline switch, allowlist, DLP, ledger), local model calls, the privacy proof, the static network check, localhost hardening (Host validation, custom header, CSP), the UI skeleton, and the test fakes.
 Remove: OTP verification, data brokers, identity matching, removal requests, Sanity, Gradium.
 
-**Drafted (untested)**: `config.py`, `store.py`, `egress.py`, `triage.py`, `costs.py`, `places.py`, `bills.py`, `llm.py`
-**To write**: `server.py`, `audit.py`, frontend, tests, docs
+**Reuse status (compared with `_src/unperson/app` at 17:30)**:
+
+| Module | Origin | Notes |
+|---|---|---|
+| `textutil.py` | Unperson, unchanged | No changes |
+| `codecheck.py` | Unperson, nearly unchanged | Static network-import check |
+| `store.py` | Unperson, minor changes | AES-256-GCM vault with a new data shape |
+| `egress.py` | Unperson, heavily changed | URL decoding before DLP, redirects disabled, failed requests recorded in the ledger |
+| `llm.py`, `config.py`, `server.py` | Unperson skeleton, mostly rewritten | Local Ollama only; routes now serve care navigation |
+| `benefits.py`, `navigation.py`, `catalog.py`, frontend | New | Calculations and UI for the three scenarios |
+| `triage.py`, `bills.py`, `costs.py`, `places.py` | New drafts | **Not yet connected to the UI** |
+
+**Done**: server, frontend, 28 tests (all passing), static network check, README; code pushed to GitHub.
+**To do**: install Ollama; configure real Tavily/Exa keys; differentiate the demo data (all four providers currently show $25); decide whether to reconnect triage; video, interviews, Devpost copy.
 
 ## 5. Tracks
 

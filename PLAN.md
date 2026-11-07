@@ -11,7 +11,21 @@
 - **和竞品的区别**：Docus、Guava、ChatGPT Health 做的是“解读化验和病历”，Zocdoc 做的是“约医生”。我们做的是“看病前后的流程导航”，并且在隐私上可以证明：搜索服务只知道“02115 附近有人要找 urgent care”，不知道你为什么去。
 - **不做的事**：不做诊断，不解读化验单，不接病历系统，不自动预约，不覆盖美国以外的医疗体系。
 
-## 2. MVP 演示流程（5 个页面）
+## 2. 三种场景（产品主线）
+
+用户一进来先回答「有没有保险」，然后分成三条路径。三条路径共用同一套 Unperson 底座：加密 vault、egress 网关和账本、本地模型、隐私证明。
+
+| 场景 | 用户是谁 | App 做什么 | 费用怎么算 | 代码状态 |
+|---|---|---|---|---|
+| **A. 已有保险** | 已经加入学生保险或其他计划的学生 | 输入自己的计划和福利 → 算出每家诊所的个人费用 → 与自费价格对比，取较低且有依据的那个 | copay，或 deductible + coinsurance + out-of-pocket 上限（`benefits.insured_cost`） | ✅ 已实现：`insurance=yes` |
+| **B. 没有保险，直接自费** | 还没投保，或者这次只想自费 | 只显示自费价格；没有报价的显示「unknown」，不当作 0 | 自费价（`benefits.cash_cost`） | ✅ 已实现：`insurance=no`，`wants_insurance=false` |
+| **C. 没有保险，正在选保险** | 在比较要不要买、买哪个计划 | 同时显示自费价格和「某个候选计划 + N 个月保费」的总成本；省钱是负数时显示「更贵」 | 一次看病费用 + N 次保费（`benefits.comparison`）；不推断补贴或资格 | ✅ 已实现：`insurance=no`，`wants_insurance=true` |
+
+三种场景共用后面的步骤：找附近的诊所 → 补充报价和网络确认 → 准备看病 → 记录预约进度 → 隐私证明。
+
+> 注：三种场景目前都只支持成人初级门诊（primary care 和复诊）。下面列的分诊和账单解读还没有接到 UI 上。
+
+## 2b. 原 MVP 演示流程（草案，部分未实现）
 
 1. **加密 vault**：设置一个密码。没有账号，也没有服务器。
 2. **我的信息**：姓名、生日、母语、过敏、用药、既往病史（这些永远不发出去）；城市、州、ZIP（找诊所时会发出去）；保险公司名（可选择是否发出去）；会员号和组号（永远不发出去）；从保险卡或 SBC 抄来的各类 copay、deductible、coinsurance。
@@ -43,8 +57,20 @@
 可以直接复用：加密 vault、egress 网关（离线开关、白名单、DLP、账本）、本地模型调用、隐私证明、静态联网检查、localhost 安全加固（Host 校验、自定义 header、CSP）、UI 骨架和测试用的 fakes。
 删掉：OTP 验证、数据经纪商、身份匹配、删除请求、Sanity、Gradium。
 
-**已起草（未测试）**：`config.py`、`store.py`、`egress.py`、`triage.py`、`costs.py`、`places.py`、`bills.py`、`llm.py`
-**待写**：`server.py`、`audit.py`、前端、测试、文档
+**复用情况（17:30 对照 `_src/unperson/app`）**：
+
+| 模块 | 来源 | 说明 |
+|---|---|---|
+| `textutil.py` | Unperson 原样 | 没有改动 |
+| `codecheck.py` | Unperson，几乎没改 | 静态联网检查 |
+| `store.py` | Unperson，小改 | AES-256-GCM vault，换了数据结构 |
+| `egress.py` | Unperson，大改 | 加了 URL 解码后再查 DLP、禁止重定向，失败的请求也记进账本 |
+| `llm.py`、`config.py`、`server.py` | Unperson 骨架，基本重写 | 只调用本机的 Ollama；路由改为就医导航 |
+| `benefits.py`、`navigation.py`、`catalog.py`、前端 | 新写 | 实现三种场景的计算和 UI |
+| `triage.py`、`bills.py`、`costs.py`、`places.py` | 新写的草稿 | **还没接到 UI** |
+
+**已完成**：server、前端、28 个测试（全部通过）、联网静态检查、README。代码已推到 GitHub。
+**待做**：装 Ollama、配置真实的 Tavily/Exa key、示例数据要拉开差别（现在 4 家诊所的费用都是 $25）、是否把分诊接回来、视频、访谈、Devpost 文案。
 
 ## 5. 赛道
 
