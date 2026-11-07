@@ -21,6 +21,11 @@ CHECKS = {
                        ["allergic reaction"], "emergency"),
     "head_injury": ("Head injury with confusion, vomiting or passing out", ["head injury"], "emergency"),
     "worst_headache": ("Sudden, severe 'worst ever' headache", ["severe headache"], "emergency"),
+    "belly_severe": ("Sudden, very bad belly pain, or a hard, swollen belly", ["severe belly pain"], "emergency"),
+    "blood_gut": ("Throwing up blood, or black or bloody poop", ["vomiting blood", "bloody stool"], "emergency"),
+    "limb_broken": ("An arm or leg that looks bent the wrong way, or bone poking through the skin",
+                    ["broken bone"], "emergency"),
+    "leg_swollen": ("One leg suddenly swollen, red, warm and painful", ["swollen leg"], "emergency"),
     "self_harm": ("Thinking about hurting or killing yourself", ["self-harm"], "crisis"),
     "poison": ("Swallowed something poisonous or too much medicine", ["poisoning", "overdose"], "poison"),
     # same day
@@ -37,6 +42,8 @@ CHECKS = {
     "rash": ("New rash or skin problem", ["rash"], "soon"),
     "cough": ("Cough, cold or flu symptoms", ["cough", "cold", "flu"], "soon"),
     "mental": ("Feeling anxious, low or overwhelmed (not in danger)", ["anxiety", "depression"], "soon"),
+    "belly_ache": ("Stomach ache, cramps or constipation", ["stomach ache"], "soon"),
+    "joint_pain": ("Sore joints, back or muscles", ["joint pain", "back pain"], "soon"),
     # routine
     "refill": ("Need a prescription refill or a new prescription", ["prescription"], "routine"),
     "checkup": ("Checkup, vaccines, or a form signed", ["checkup", "vaccine"], "routine"),
@@ -53,6 +60,10 @@ RED_FLAG_WORDS = {
     "allergy_severe": r"(throat|tongue|lips?) (is |are )?(swell|swollen|closing)",
     "bleeding": r"won'?t stop bleeding|bleeding (a lot|heavily)",
     "worst_headache": r"worst headache",
+    "belly_severe": r"(severe|sudden|worst|unbearable) (stomach|belly|abdominal|tummy) pain",
+    "blood_gut": r"(vomit\w*|thr(ew|ow\w*) up) blood|black (stool|poop)|blood(y)? (in (my )?)?(stool|poop)",
+    "limb_broken": r"bone (is )?(poking|sticking) (out|through)",
+    "leg_swollen": r"(leg|calf) (is )?(suddenly )?(swollen|swelling)",
 }
 
 LEVEL_ORDER = ["routine", "soon", "same_day", "emergency"]

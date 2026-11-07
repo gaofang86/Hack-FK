@@ -70,6 +70,16 @@ class PersonFirstTests(unittest.TestCase):
         stored = self.app.store.data["cases"][case["id"]]
         self.assertIn("sore throat", stored["symptom_terms"])
 
+    def test_belly_and_limb_warning_signs(self):
+        for check in ("belly_severe", "blood_gut", "limb_broken", "leg_swollen"):
+            self.assertEqual(self.call("/api/safety", {"checks": [check]})["level"], "emergency", check)
+        for text in ("I threw up blood this morning", "black stool since yesterday",
+                     "sudden belly pain that is unbearable", "my calf is swollen and red"):
+            self.assertEqual(self.call("/api/safety", {"checks": [], "description": text})["level"], "emergency", text)
+        self.assertEqual(self.call("/api/safety", {"checks": [], "description": "I threw up after dinner"})["level"], "routine")
+        for check in ("belly_ache", "joint_pain"):
+            self.assertEqual(self.call("/api/safety", {"checks": [check]})["level"], "soon", check)
+
 
 if __name__ == "__main__":
     unittest.main()
