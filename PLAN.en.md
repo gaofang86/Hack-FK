@@ -15,17 +15,62 @@
 
 ## 2. Three scenarios (the product's main path)
 
-The first question is "Do you have health insurance?" The answer splits the user into one of three paths. All three share the same Unperson foundation: the encrypted vault, the egress gateway and ledger, the local model, and the privacy proof.
+### Step 0: Person first — start from the person's health
 
-| Scenario | Who | What the app does | How cost is calculated | Code status |
-|---|---|---|---|---|
-| **A. Has insurance** | Students already on the student health plan or another plan | Enter their plan and benefits → calculate a personal cost at each provider → compare with self-pay and use the lower supported amount | Copay, or deductible + coinsurance + out-of-pocket limit (`benefits.insured_cost`) | ✅ Built: `insurance=yes` |
-| **B. No insurance, self-pay** | Not yet insured, or paying cash for this visit | Show self-pay prices only; a missing quote is shown as "unknown", never as $0 | Self-pay price (`benefits.cash_cost`) | ✅ Built: `insurance=no`, `wants_insurance=false` |
-| **C. No insurance, choosing a plan** | Deciding whether to buy coverage and which plan | Show self-pay next to "a candidate plan + N premium payments"; a negative saving is shown as a higher cost | One visit + N premium payments (`benefits.comparison`); no subsidy or eligibility inference | ✅ Built: `insurance=no`, `wants_insurance=true` |
+The product starts from caring about the person's health, not from a place or an identity. First understand the person's health, stored only on the device:
 
-All three share the later steps: find nearby providers → add quotes and network confirmation → prepare the visit → track the appointment → privacy proof.
+- **Age**: determines which preventive screenings and vaccines fit this person
+- **Current health**: recent symptoms, chronic conditions, medications, allergies, ongoing treatment or follow-ups
+- **Need**: what they need right now (see the three cases below)
+- **Language**: native language, whether they need an interpreter
+- **Insurance status**: has a plan / no plan / choosing a plan
+- **Location**: just one dimension, used at the end to filter nearby options; also the only field sent to search services
 
-> Note: all three scenarios currently cover adult primary care only (appointments and follow-ups). The triage and bill explanation listed below are not yet connected to the UI.
+No identity questions (student status, school, etc.).
+
+### Health-based to-dos and better choices
+
+Beyond answering this one need, the app proactively offers, based on the person's health:
+
+- **Potential to-dos**: for example age-appropriate preventive screenings and vaccines, medications running out that need a refill, follow-ups that are due, regular checks for chronic conditions
+- **Better choices**: for example telehealth or campus health instead of the ER when it isn't urgent; many plans cover preventive services at no cost; a cheaper generic medication; a check that can be done during this same visit
+
+Rules:
+- Every item comes from a deterministic rule with an official source and date (for example USPSTF screening recommendations, the CDC adult immunization schedule). The local model only explains them in the user's native language; it cannot generate recommendations itself.
+- Only say "you could consider" and "you could ask your doctor". No diagnosis, and no decisions on the doctor's behalf.
+- These to-dos are saved in the local vault and are still there the next time the app opens.
+
+Insurance status only decides how the user pays. What comes first is what they need right now, so the first question is about the need:
+
+1. **I feel unwell now**: run a local safety check first. Emergencies go straight to 911, the ER, 988 or Poison Control, **with no insurance questions at all**. Non-urgent cases continue.
+2. **I have a specific service to arrange**: for example an appointment, a follow-up, a prescription refill, counseling, or a vaccine.
+3. **I don't need care right now**: I just want to understand my insurance, or I'm choosing a plan.
+
+Only then do we ask about insurance and split into three scenarios. **The three scenarios have different core questions, focus and first steps**, and finding a clinic is not necessarily the first step. They share only the Unperson foundation: the encrypted vault, the egress gateway and ledger, the local model, and the privacy proof.
+
+### The three scenarios
+
+| | **A. Has insurance** | **B. No insurance** | **C. Choosing a plan** |
+|---|---|---|---|
+| **Core question** | What does my plan cover, and how do I use it for the lowest cost? | Where is the cheapest care, and what resources might I not know about? | Which plan best covers what I need most? |
+| **Focus** | **Benefits** | **Lowest price + possible coverage and resources to ask for help** | **Coverage vs. most-needed services** |
+| **User input** | Plan name; copay, remaining deductible and coinsurance for this service; member details stay on the device | Need, location, budget | Most-needed services (regular medications, counseling, specialists, chronic-condition follow-ups, etc.), doctors they want to keep seeing, budget, candidate plans |
+| **First step** | A **benefit summary** for this need: is it covered, is a referral or prior authorization needed, are preventive services free, what resources come with the plan (nurse line, telehealth) | **Check whether they are actually insured**: the school may have enrolled them in the student plan automatically. Then look at the cheapest options | **List the services they need most**, without searching for clinics |
+| **What the app does** | Rank in-network options by what the user will actually pay; list questions to confirm with the insurer | Rank by self-pay price (missing quotes stay unknown); list resources: community health centers (income-based fees), free clinics, hospital financial assistance, state programs (eligibility must be confirmed by the user); explain the right to a written estimate when uninsured or self-paying (Good Faith Estimate, under the No Surprises Act); provide scripts for asking for an estimate or a discount | For each candidate plan, mark every most-needed service: covered or not, what it costs, whether the preferred doctors are in network; estimate the yearly total (premiums + expected use); flag what each plan doesn't cover or needs attention; link official sources (school plan, Health Connector) |
+| **Last step** | Visit preparation: phone script, condition card, what to bring | Visit preparation, plus scripts for estimates and financial help | Enroll through the official channel; **no enrollment inside the app** |
+| **Can move to** | — | Wants to buy a plan → C | After choosing → A |
+
+> Note: every resource and rule needs an official source and date. Eligibility is never inferred; the app only tells users where to confirm it.
+
+### Current code and gaps (17:45)
+
+| Part | Current code | Gap |
+|---|---|---|
+| Entry order | **Location** first → insurance → need (this is the current code's order: location first) | Change to person first: health and need (with safety check) → age, language, insurance → scenario + health to-dos; ask for location only when it is time to find a place. `triage.py` is drafted but not connected |
+| A. Has insurance | `benefits.insured_cost` calculates personal cost and compares it with self-pay | No benefit summary, no referral or preventive-service guidance; the results page is still centered on a clinic list |
+| B. No insurance | `benefits.cash_cost` ranks by self-pay price; there is a "check your school account" hint | No resource list, no Good Faith Estimate guidance or scripts |
+| C. Choosing a plan | `benefits.comparison` only covers one visit + N premium payments | No "most-needed services" input, no multi-plan comparison, no yearly estimate |
+| Results page | All three scenarios share one clinic-list template | Each scenario needs its own results page |
 
 ## 2b. Original MVP demo flow (draft, partly unbuilt)
 
