@@ -30,7 +30,7 @@ CHECKS = {
     "urination": ("Burning or pain when you pee", ["urinary pain"], "same_day"),
     "fluids": ("Vomiting or diarrhea and can't keep fluids down", ["vomiting", "diarrhea"], "same_day"),
     "eye": ("Eye injury, or a red painful eye", ["eye pain"], "same_day"),
-    "severe_pain": ("Pain you would rate 7 or more out of 10", ["severe pain"], "same_day"),
+    "severe_pain": ("Pain bad enough that you can't sleep, walk, eat or get through the day", ["severe pain"], "same_day"),
     # soon (1-2 days)
     "fever": ("Fever under 103°F / 39.4°C", ["fever"], "soon"),
     "sore_throat": ("Sore throat or ear pain", ["sore throat", "ear pain"], "soon"),

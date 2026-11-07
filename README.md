@@ -25,11 +25,11 @@ Open http://127.0.0.1:8767. This uses a disposable vault, disables public search
 
 ## Actual user flow
 
-1. Enter city/state and optional ZIP. Device coordinates are optional and stay local; they are never sent for geocoding.
-2. Choose whether you already have insurance.
+1. Start with you and your health: age, what you need help with, and how you feel right now (a symptom checklist, or "nothing feels wrong"). Optional history and medications stay local. A fixed set of local rules (`app/triage.py`) checks for warning signs first. Emergencies show 911 / ER / 988 / Poison Control and never reach price comparison; same-day needs are pointed to urgent care or a campus clinic. Nothing in this step is sent anywhere.
+2. Choose your language and whether you already have insurance.
    - Yes: enter the exact plan and known service benefits.
    - No: continue with self-pay, or enter a plan to explore buying coverage.
-3. Choose the known visit type, date, language, budget and ranking preference. Optional concerns/history/medications remain local. This version asks the user to confirm adult, non-emergency outpatient care; it does not infer urgency from absence of symptoms.
+3. Choose when and where: visit date, budget, ranking preference, then city/state and optional ZIP. Location is the only detail a public search uses. Device coordinates are optional and stay local.
 4. Create/unlock the encrypted vault. Review the exact public queries and recipients. Choose live discovery when configured, or the local directory only.
 5. Compare source-labeled results. Missing prices, review ratings, service availability and network status stay unknown.
 6. Add a scoped quote and exact-plan network confirmation for a specific provider/location/service. The app labels these user-entered and recalculates.

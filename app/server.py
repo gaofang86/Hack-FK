@@ -14,7 +14,8 @@ from .catalog import candidates
 from .config import Config, ROOT
 from .egress import Egress, EgressBlocked, EgressError
 from .llm import LocalModel
-from .navigation import SERVICES, clean_input, from_search, ranked, text, update_quote
+from .navigation import SERVICES, clean_input, from_search, ranked, safety_check, text, update_quote
+from .triage import checks_view, symptom_terms
 from .places import Places, plan_queries
 from .store import Store, VaultError
 
@@ -62,6 +63,13 @@ class App:
                     raise ValueError("Invalid passphrase")
                 getattr(self.store, "create" if path.endswith("create") else "unlock")(phrase)
                 return self.state()
+            if path == "/api/safety" and method == "POST":
+                # Stateless and local: fixed rules on this machine, nothing stored or sent.
+                result = safety_check(dict(checks=body.get("checks") or [], description=body.get("description"),
+                                           severity=body.get("severity")))
+                return dict(result, choices=checks_view())
+            if path == "/api/safety/choices" and method == "GET":
+                return dict(choices=checks_view())
             self.store.require()
             self.store.touch()
             if path == "/api/vault/lock" and method == "POST":
@@ -97,7 +105,8 @@ class App:
                 person = preview["input"]
                 ident = secrets.token_hex(8)
                 case = dict(id=ident, input=person, created=time.time(), status="comparing", contact={},
-                            description=person["description"], symptom_terms=[person["history"], person["medications"]],
+                            description=person["description"], symptom_terms=[person["history"], person["medications"],
+                                           *symptom_terms((person.get("safety") or {}).get("checks", []))],
                             providers=candidates(person["city"], person["state"], person["demo"], person["service"]), errors=[])
                 self.store.data["cases"][ident] = case
                 # Register private values before any external request. No raw narrative enters the search planner.

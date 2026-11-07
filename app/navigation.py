@@ -5,6 +5,7 @@ import math
 from urllib.parse import urlparse
 
 from .benefits import cash_cost, clean_plan, comparison, insured_cost, number
+from .triage import CHECKS, decide
 
 SERVICES = {"primary_care": "Primary-care appointment", "follow_up": "Primary-care follow-up"}
 
@@ -17,6 +18,25 @@ def safe_url(value):
     value = text(value, 2000)
     parsed = urlparse(value)
     return value if parsed.scheme in ("https", "http") and parsed.hostname and not parsed.username and not parsed.password else ""
+
+
+def safety_check(raw):
+    """Person-first safety step. Runs on this machine with fixed rules; never sent anywhere."""
+    checks = raw.get("checks")
+    if checks is None:
+        return None
+    if not isinstance(checks, list) or not all(isinstance(c, str) for c in checks):
+        raise ValueError("Invalid health check")
+    picked = [c for c in checks if c in CHECKS]
+    severity = number(raw.get("severity"), "Pain score", 10)
+    result = decide(picked, text(raw.get("description"), 3000), None if severity is None else int(severity))
+    if not picked and not result["noticed"] and severity is None:
+        result.update(level="routine", options=["primary_care", "campus_health", "telehealth"],
+                      headline="No warning signs reported. This can be arranged as a regular appointment.",
+                      why="You told us nothing feels wrong right now.",
+                      rules=["You reported no current symptoms"])
+    result["checks"] = picked
+    return result
 
 
 def clean_input(raw):
@@ -35,7 +55,14 @@ def clean_input(raw):
             raise ValueError()
     except ValueError:
         raise ValueError("Choose today or a future visit date")
-    if raw.get("routine_confirmed") is not True or raw.get("adult") is not True:
+    age = number(raw.get("age"), "Age", 120)
+    adult = age >= 18 if age is not None else raw.get("adult") is True
+    safety = safety_check(raw)
+    if safety and safety["level"] in ("emergency", "same_day"):
+        raise ValueError(safety["headline"])
+    if not adult:
+        raise ValueError("This version supports adults (18+). For a child or teen, contact a pediatric clinician.")
+    if raw.get("routine_confirmed") is not True and safety is None:
         raise ValueError("This version is for adults arranging known non-emergency outpatient care. Contact a clinician if you need help deciding what care you need.")
     if raw.get("demo") is True and (city.casefold() != "boston" or state != "MA"):
         raise ValueError("The fictional example uses Boston. Start a new real search to change cities.")
@@ -54,7 +81,9 @@ def clean_input(raw):
                   language=text(raw.get("language", "English"), 50), description=text(raw.get("description"), 3000),
                   history=text(raw.get("history"), 3000), medications=text(raw.get("medications"), 1000),
                   plan=clean_plan(raw.get("plan")), months=int(months), demo=raw.get("demo") is True,
-                  routine_confirmed=True, adult=True, lat=None, lon=None)
+                  routine_confirmed=True, adult=True, age=None if age is None else int(age),
+                  safety=None if safety is None else {k: safety[k] for k in ("level", "headline", "rules", "checks")},
+                  lat=None, lon=None)
     if raw.get("lat") is not None and raw.get("lon") is not None:
         try:
             lat, lon = float(raw["lat"]), float(raw["lon"])
