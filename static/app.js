@@ -17,15 +17,15 @@ const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 const fresh = () => ({city:'Boston',state:'MA',zip:'',lat:null,lon:null,insurance:'',wants_insurance:false,
   service:'primary_care',visit_date:today(),language:'English',description:'',history:'',medications:'',budget:'',
   priority:'balanced',months:1,adult:false,routine_confirmed:false,demo:false,plan:null,
-  age:'',checks:[],none_reported:false});
-const S = {step:0, input:fresh(), state:{services:{},cases:[]}, preview:null, current:null, busy:false, choices:[], safety:null};
+  age:'',checks:[],none_reported:false,feel:'',need:''});
+const S = {step:0, input:fresh(), state:{services:{},cases:[]}, preview:null, current:null, busy:false, choices:[], safety:null, sub:'start', open:new Set()};
 
 async function api(path, body) {
   const response = await fetch(path, {method:body === undefined ? 'GET':'POST', headers:{'X-FirstVisit':'local','Content-Type':'application/json'}, ...(body === undefined ? {} : {body:JSON.stringify(body)})});
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 423 && S.state.unlocked) {
-      S.state.unlocked = false; S.current = null; S.input = fresh(); S.safety = null; S.step = 0; S.preview = null; closeDialog(); render();
+      S.state.unlocked = false; S.current = null; S.input = fresh(); S.safety = null; S.sub = 'start'; S.step = 0; S.preview = null; closeDialog(); render();
     }
     throw new Error(data.error || 'Something went wrong. Please try again.');
   }
@@ -47,18 +47,19 @@ function select(label,name,options,value) {
   return `<label class="field"><span>${label}</span><select name="${name}">${options.map(([v,l])=>`<option value="${esc(v)}" ${value===v?'selected':''}>${esc(l)}</option>`).join('')}</select></label>`;
 }
 function planFields(plan, prefix='plan_') {
-  const p = plan || {};
-  return `<div class="form-grid">
+  const p = plan || {}, rule = p.rule || 'copay';
+  return `<div class="sub-card"><p class="sub-title">The plan</p><div class="form-grid">
     ${field('Exact plan / network name',prefix+'name',p.name,'text','placeholder="Copy the full name from the plan" maxlength="120"')}
-    ${field('Monthly premium you would pay ($)',prefix+'premium',p.premium,'number','min="0" max="1000000" step="0.01" placeholder="Optional; needed for total comparison"')}
+    ${field('Monthly premium ($)',prefix+'premium',p.premium,'number','min="0" max="1000000" step="0.01" placeholder="Optional"')}
     ${field('Coverage starts',prefix+'start',p.start,'date')}${field('Coverage ends (if known)',prefix+'end',p.end,'date')}
-    ${select('Benefit for this type of visit',prefix+'rule', [['copay','Copay; deductible does not apply'],['deductible','Deductible, then coinsurance']],p.rule || 'copay')}
-    ${field('Visit copay ($)',prefix+'copay',p.copay,'number','min="0" step="0.01" placeholder="For the copay rule only"')}
-    ${field('Remaining deductible ($)',prefix+'deductible_remaining',p.deductible_remaining,'number','min="0" step="0.01" placeholder="For deductible-based benefits"')}
-    ${field('Coinsurance you pay (%)',prefix+'coinsurance',p.coinsurance,'number','min="0" max="100" step="0.1"')}
-    ${field('Remaining out-of-pocket limit ($)',prefix+'oop_remaining',p.oop_remaining,'number','min="0" step="0.01"')}
-  </div><label class="checkline"><input name="${prefix}eligible" type="checkbox" ${p.eligible?'checked':''}><span>I confirmed my eligibility with the plan or marketplace.</span></label>
-  <p class="hint">Use the benefit for this specific visit. Leave unknown values blank. A card alone does not confirm your remaining deductible or each provider’s network participation.</p>`;
+  </div><label class="checkline"><input name="${prefix}eligible" type="checkbox" ${p.eligible?'checked':''}><span>I confirmed my eligibility with the plan or marketplace.</span></label></div>
+  <div class="sub-card"><p class="sub-title">What this visit costs you</p>
+    ${select('How the plan pays for this visit',prefix+'rule', [['copay','A fixed copay (deductible does not apply)'],['deductible','Deductible first, then coinsurance']],rule)}
+    <div class="form-grid"><div data-rule-fields="copay" ${rule==='copay'?'':'hidden'}>${field('Visit copay ($)',prefix+'copay',p.copay,'number','min="0" step="0.01"')}</div>
+    <div data-rule-fields="deductible" class="rule-pair" ${rule==='deductible'?'':'hidden'}>${field('Remaining deductible ($)',prefix+'deductible_remaining',p.deductible_remaining,'number','min="0" step="0.01"')}${field('Coinsurance you pay (%)',prefix+'coinsurance',p.coinsurance,'number','min="0" max="100" step="0.1"')}</div>
+    ${field('Remaining out-of-pocket limit ($)',prefix+'oop_remaining',p.oop_remaining,'number','min="0" step="0.01"')}</div>
+    <p class="hint">Leave unknown values blank. A card alone doesn’t confirm your remaining deductible or each provider’s network.</p>
+  </div>`;
 }
 function planResources() {
   return `<details class="private-details"><summary>Find your actual plan details</summary><div class="resource-list"><a href="https://studenthealthplan.northeastern.edu/" target="_blank" rel="noopener noreferrer">Northeastern student plan & benefit documents ↗</a><a href="https://betterhealthconnector.com/compare-plans" target="_blank" rel="noopener noreferrer">Massachusetts Health Connector plan comparison ↗</a><a href="https://providerdirectory.mahealthconnector.org/" target="_blank" rel="noopener noreferrer">Health Connector provider / plan directory ↗</a></div><p class="hint">Check the exact plan year and your enrollment before copying benefits. These are official information sources, not a personalized premium quote or an eligibility determination. Opening a source does not send your local health profile.</p></details>`;
@@ -66,14 +67,13 @@ function planResources() {
 function readPlan(form) {
   const f = new FormData(form), p = {};
   ['name','premium','start','end','rule','copay','deductible_remaining','coinsurance','oop_remaining'].forEach(k => p[k] = f.get('plan_'+k) ?? '');
-  p.eligible = f.has('plan_eligible'); return p.name.trim() ? p : null;
+  p.eligible = f.has('plan_eligible'); return p;
 }
 function collect() {
   const form = $('#wizard'); if (!form) return;
   const f = new FormData(form);
   if(S.step===2 && (f.get('city')!==S.input.city || f.get('state')!==S.input.state)) {S.input.lat=null;S.input.lon=null;}
   for (const [k,v] of f) if (!k.startsWith('plan_') && !['passphrase','live','adult','routine_confirmed','checks','none_reported'].includes(k)) S.input[k] = v;
-  if (S.step === 0) { S.input.checks = f.getAll('checks'); S.input.none_reported = f.has('none_reported'); }
   if (S.step === 1 && $('[name="plan_name"]',form)) S.input.plan = readPlan(form);
 }
 function renderHeader() {
@@ -88,12 +88,19 @@ function sidebar() {
   const names=['You & your health','What matters to you','When & where','Review & find care'];
   return `<aside class="journey-sidebar"><p class="eyebrow">A CLEARER PATH TO CARE</p><h1>Care that puts<br><em>you first.</em></h1><p class="sidebar-copy">We start with you and your health. Where to go comes after.</p><ol class="steps">${names.map((n,i)=>`<li class="${S.step===i?'active':S.step>i?'done':''}"><span>${S.step>i?icon('check'):String(i+1).padStart(2,'0')}</span><div>${n}<small>${['How you are doing, first','Language and coverage','Location is one detail','You control what is shared'][i]}</small></div></li>`).join('')}</ol><div class="sidebar-note">${icon('shield')}<p>Your health details stay on this device. Location is the only detail a public search uses, and you review it first.</p></div><button class="text-button" data-action="demo">Explore a fictional example ${icon('arrow')}</button></aside>`;
 }
-const LEVEL_GROUPS=[['emergency','Get help now'],['same_day','Needs care today'],['soon','In a day or two'],['routine','Routine']];
-function checkGroups(p){
-  const level=c=>['crisis','poison'].includes(c.level)?'emergency':c.level;
-  return LEVEL_GROUPS.map(([lv,title])=>{const items=S.choices.filter(c=>level(c)===lv);if(!items.length)return '';
-    return `<fieldset class="check-group"><legend>${title}</legend>${items.map(c=>`<label class="checkline"><input type="checkbox" name="checks" value="${esc(c.id)}" ${p.checks.includes(c.id)?'checked':''}><span>${esc(c.label)}</span></label>`).join('')}</fieldset>`;}).join('');
+const lvl=c=>['crisis','poison'].includes(c.level)?'emergency':c.level;
+const SIGN_GROUPS=[['Heart and breathing',['chest_pain','breathing']],['Head and brain',['stroke','fainted','head_injury','worst_headache']],['Bleeding and allergic reactions',['bleeding','allergy_severe']],['Mental health',['self_harm']],['Poisoning or overdose',['poison']]];
+const EVERYDAY_GROUPS=[['Fever, cold and infection',['high_fever','fever','cough','sore_throat']],['Injury and pain',['injury','severe_pain','eye']],['Stomach and urinary',['fluids','urination']],['Skin',['rash']],['Mood and stress',['mental']]];
+function grouped(items,groups){const used=new Set();const out=groups.map(([t,ids])=>{const g=ids.map(id=>items.find(c=>c.id===id)).filter(Boolean);g.forEach(c=>used.add(c.id));return [t,g];}).filter(([,g])=>g.length);const rest=items.filter(c=>!used.has(c.id));if(rest.length)out.push(['Other',rest]);return out;}
+function groupCards(items,groups,kind){
+  return `<div class="group-cards">${grouped(items,groups).map(([t,g])=>{
+    const n=g.filter(c=>S.input.checks.includes(c.id)).length, open=S.open.has(t);
+    const item=c=>kind==='sign'?`<button type="button" class="sign ${S.input.checks.includes(c.id)?'selected':''}" data-sign="${esc(c.id)}"><span class="choice-radio"></span>${esc(c.label)}</button>`:`<button type="button" class="chip ${S.input.checks.includes(c.id)?'selected':''}" data-chip="${esc(c.id)}">${esc(c.label)}</button>`;
+    return `<div class="group-card ${open?'open':''} ${n?'has':''}"><button type="button" class="group-head" data-group="${esc(t)}" aria-expanded="${open}"><span>${t}</span><small>${n?`${n} selected`:`${g.length} ${g.length===1?'item':'items'}`}</small><span class="chev" aria-hidden="true">${open?'−':'+'}</span></button>${open?`<div class="group-body ${kind==='sign'?'':'chips'}">${g.map(item).join('')}</div>`:''}</div>`;
+  }).join('')}</div>`;
 }
+const NEEDS=[['checkup','Checkup, vaccine or a form','checkup','primary_care'],['refill','Prescription refill','refill','primary_care'],['follow_up','Follow-up visit','','follow_up'],['unsure','I’m not sure','','unsure']];
+const FEELS=[['unwell','I feel unwell','Something is bothering me','mood-sick'],['okay','I’m okay','I’m arranging planned care','mood-smile'],['unsure','I’m not sure what I need','Help me figure it out','help']];
 function safetyPanel(r){
   if(!r)return '';
   const urgent=['emergency','same_day'].includes(r.level);
@@ -104,46 +111,76 @@ function safetySummary(){
   const r=S.safety;if(!r)return '';
   return `<div class="safety-summary">${icon('check')}<div><strong>Your safety check</strong><span>${esc(r.headline)}</span></div><button type="button" class="text-button" data-action="health">Change</button></div>`;
 }
+function healthHead(title,lede){return `<div class="section-icon">${icon('heart')}</div><p class="eyebrow">01 / YOU & YOUR HEALTH</p><h2>${title}</h2><p class="lede">${lede}</p>`;}
 function healthStep(p){
-  return `<div class="section-icon">${icon('heart')}</div><p class="eyebrow">01 / YOU & YOUR HEALTH</p><h2>How are you doing?</h2><p class="lede">We start with you, not a map. Everything on this page stays on this device.</p>
-  <div class="form-grid">${field('Your age','age',p.age,'number','required min="0" max="120" step="1" inputmode="numeric"')}${select('What do you need help with?','service',[['primary_care','A primary-care appointment'],['follow_up','A primary-care follow-up'],['unsure','I’m not sure what care I need']],p.service)}</div>
-  <h3 class="subhead">How are you feeling right now?</h3><p class="hint">Tick anything that applies. A fixed set of rules checks this on your computer before anything else.</p>
-  <label class="checkline none-line"><input type="checkbox" name="none_reported" ${p.none_reported?'checked':''}><span>Nothing feels wrong right now. I’m arranging planned care.</span></label>
-  ${checkGroups(p)}
-  <label class="field"><span>Anything else about how you feel? <small>Optional · stays local</small></span><textarea name="description" rows="3" maxlength="3000" placeholder="For example: my doctor asked me to arrange a follow-up.">${esc(p.description)}</textarea></label>
-  <details class="private-details" ${p.history||p.medications?'open':''}><summary>Health history & medications <span>Optional, private</span></summary><label class="field"><span>Conditions, allergies, or clinician instructions</span><textarea name="history" maxlength="3000" rows="3">${esc(p.history)}</textarea></label>${field('Current medications (optional)','medications',p.medications,'text','maxlength="1000"')}<p class="hint">Used locally to prepare your visit. FirstVisit does not diagnose.</p></details>
-  <div id="safety-result">${safetyPanel(S.safety)}</div>`;
+  const sub=S.sub, actions=(back,next)=>`<div class="form-actions">${back?`<button type="button" class="text-button" data-sub="${back}">← Back</button>`:'<span class="small-note">Everything here stays on this device.</span>'}${next||''}</div>`;
+  if(sub==='start') return healthHead('How are you feeling right now?','We start with you, not a map.')+
+    `<div class="feel-list">${FEELS.map(([id,t,d])=>`<button type="button" class="choice feel ${p.feel===id?'selected':''}" data-feel="${id}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div>`+actions('');
+  if(sub==='signs'){
+    const items=S.choices.filter(c=>lvl(c)==='emergency');
+    return healthHead('Do any of these apply right now?','Open a category to check. A fixed set of rules checks this on your computer.')+
+    groupCards(items,SIGN_GROUPS,'sign')+`
+    <div id="safety-result">${S.safety&&S.safety.level==='emergency'?safetyPanel(S.safety):''}</div>`+
+    actions('start',`<button type="button" class="primary" data-sub-next="none">None of these ${icon('arrow')}</button>`);
+  }
+  if(sub==='everyday'){
+    const items=S.choices.filter(c=>['same_day','soon'].includes(lvl(c)));
+    return healthHead('What’s bothering you?','Open a category and pick any that fit.')+
+    groupCards(items,EVERYDAY_GROUPS,'chip')+`
+    <label class="field"><span>Anything else? <small>Optional · stays local</small></span><textarea name="description" rows="2" maxlength="3000" placeholder="It started two days ago and gets worse at night.">${esc(p.description)}</textarea></label>
+    <div id="safety-result">${S.safety&&['emergency','same_day'].includes(S.safety.level)?safetyPanel(S.safety):''}</div>`+
+    actions('signs',`<button type="submit" class="primary">Continue ${icon('arrow')}</button>`);
+  }
+  return healthHead('What do you need?','No symptom questions needed.')+
+    `<div class="chips">${NEEDS.map(([id,t])=>`<button type="button" class="chip ${p.need===id?'selected':''}" data-need="${id}">${t}</button>`).join('')}</div>
+    <label class="field"><span>Anything else? <small>Optional · stays local</small></span><textarea name="description" rows="2" maxlength="3000" placeholder="My doctor asked me to come back in two weeks.">${esc(p.description)}</textarea></label>`+
+    actions('start',`<button type="submit" class="primary">Continue ${icon('arrow')}</button>`);
 }
+function card(title,hint,body,cls=''){return `<section class="form-card ${cls}"><div class="form-card-head"><h3>${title}</h3>${hint?`<p>${hint}</p>`:''}</div>${body}</section>`;}
 function stepContent() {
   const p=S.input;
   if (S.step===0) return healthStep(p);
-  if (S.step===1) return `<div class="section-icon">${icon('shield')}</div><p class="eyebrow">02 / WHAT MATTERS TO YOU</p><h2>How should care work for you?</h2><p class="lede">Your language and coverage shape every option we show.</p>${safetySummary()}${select('Preferred language','language',[['English','English'],['Chinese','Chinese / 中文'],['Spanish','Spanish / Español']],p.language)}<h3 class="subhead">Do you have health insurance?</h3><div class="choice-grid"><button type="button" class="choice ${p.insurance==='yes'?'selected':''}" data-insurance="yes"><span class="choice-radio"></span><strong>Yes, I have insurance</strong><span>Use my benefits and compare my personal cost.</span></button><button type="button" class="choice ${p.insurance==='no'?'selected':''}" data-insurance="no"><span class="choice-radio"></span><strong>No insurance right now</strong><span>Explore self-pay care and optional coverage.</span></button></div>
-    ${p.insurance==='no'?`<div class="branch"><h3>Would you like to explore insurance?</h3><div class="segmented"><button type="button" class="${!p.wants_insurance?'selected':''}" data-wants="no">Continue without it</button><button type="button" class="${p.wants_insurance?'selected':''}" data-wants="yes">Compare getting a plan</button></div><p class="hint">You’ll see self-pay options in both cases. Check your school account first—you may already be enrolled in student coverage. Self-pay care does not replace school insurance requirements.</p></div>`:''}
-    ${p.insurance==='yes'||p.wants_insurance?`<div class="branch"><h3>${p.insurance==='yes'?'Your current plan':'A plan you’re considering'}</h3><p class="hint">${p.insurance==='yes'?'Enter what you know. You can find providers before all your benefits are confirmed.':'Use an actual plan quote, or leave these blank and explore enrollment resources after your search.'}</p>${planFields(p.plan)}${planResources()}</div>`:''}`;
-  if (S.step===2) return `<div class="section-icon">${icon('pin')}</div><p class="eyebrow">03 / WHEN & WHERE</p><h2>When and where works for you?</h2><p class="lede">Location is one part of the picture. It is also the only detail a public search uses.</p><div class="form-grid">${field('Planned visit date','visit_date',p.visit_date,'date',`required min="${today()}"`)}${field('Visit budget ($, optional)','budget',p.budget,'number','min="0" step="0.01" placeholder="Your comfort zone"')}</div>${select('Put this first','priority',[['balanced','My fit: language, budget, then cost'],['cost','Lowest supported personal cost'],['rating','Highest sourced patient rating'],['distance','Closest known location']],p.priority)}<div class="location-choice">${icon('pin')}<div><strong>Boston, Massachusetts</strong><span>Our first supported local directory</span></div><button type="button" class="text-button" data-action="boston">Use Boston</button></div><div class="form-grid">${field('City','city',p.city,'text','required maxlength="70" autocomplete="address-level2"')}${field('State','state',p.state,'text','required pattern="[A-Za-z]{2}" maxlength="2" autocomplete="address-level1"')}${field('ZIP code (optional)','zip',p.zip,'text','pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"')}</div><button type="button" class="secondary" data-action="geolocate">${icon('pin')} Add my device location</button><p class="hint">${p.lat!=null?'Coordinates added for local distance calculations. Confirm the city above.':'Precise coordinates stay local. They are optional; city and state are enough to start.'}</p><div class="soft-note">Our saved directory starts in Boston. Other cities require live discovery; results always show what still needs confirmation.</div>`;
+  if (S.step===1) {
+    const insured=p.insurance==='yes', exploring=p.insurance==='no'&&p.wants_insurance;
+    return `<div class="section-icon">${icon('shield')}</div><p class="eyebrow">02 / WHAT MATTERS TO YOU</p><h2>How should care work for you?</h2><p class="lede">Your language and coverage shape every option we show.</p>${safetySummary()}`+
+    card('About you','Stays on this device.',`<div class="form-grid">${field('Your age','age',p.age,'number','required min="0" max="120" step="1" inputmode="numeric"')}${select('Preferred language','language',[['English','English'],['Chinese','Chinese / 中文'],['Spanish','Spanish / Español']],p.language)}</div>`)+
+    card('Insurance','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${insured?'selected':''}" data-insurance="yes"><span class="choice-radio"></span><strong>Yes, I have insurance</strong><span>Use my benefits and compare my personal cost.</span></button><button type="button" class="choice ${p.insurance==='no'?'selected':''}" data-insurance="no"><span class="choice-radio"></span><strong>No insurance right now</strong><span>Explore self-pay care and optional coverage.</span></button></div>
+      ${p.insurance==='no'?`<div class="sub-card"><p class="sub-title">Would you like to explore insurance?</p><div class="segmented"><button type="button" class="${!p.wants_insurance?'selected':''}" data-wants="no">Continue without it</button><button type="button" class="${p.wants_insurance?'selected':''}" data-wants="yes">Compare getting a plan</button></div><p class="hint">Check your school account first. You may already be enrolled in student coverage.</p></div>`:''}`)+
+    (insured||exploring?card(insured?'Your current plan':'A plan you’re considering',insured?'Enter what you know. You can still find care before every benefit is confirmed.':'Use an actual plan quote, or leave this blank and explore options after your search.',planFields(p.plan)+planResources()):'');
+  }
+  if (S.step===2) return `<div class="section-icon">${icon('pin')}</div><p class="eyebrow">03 / WHEN & WHERE</p><h2>When and where works for you?</h2><p class="lede">Location is one part of the picture. It’s also the only detail a public search uses.</p>`+
+    card('When','',field('Planned visit date','visit_date',p.visit_date,'date',`required min="${today()}"`))+
+    card('What matters most','How we order your options.',`<div class="form-grid">${select('Put this first','priority',[['balanced','My fit: language, budget, then cost'],['cost','Lowest supported personal cost'],['rating','Highest sourced patient rating'],['distance','Closest known location']],p.priority)}${field('Visit budget ($, optional)','budget',p.budget,'number','min="0" step="0.01" placeholder="Your comfort zone"')}</div>`)+
+    card('Where','The only detail a public search uses. You review it before anything is sent.',`<div class="location-choice">${icon('pin')}<div><strong>Boston, Massachusetts</strong><span>Our first supported local directory</span></div><button type="button" class="text-button" data-action="boston">Use Boston</button></div><div class="form-grid three">${field('City','city',p.city,'text','required maxlength="70" autocomplete="address-level2"')}${field('State','state',p.state,'text','required pattern="[A-Za-z]{2}" maxlength="2" autocomplete="address-level1"')}${field('ZIP (optional)','zip',p.zip,'text','pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"')}</div><button type="button" class="secondary" data-action="geolocate">${icon('pin')} Add my device location</button><p class="hint">${p.lat!=null?'Coordinates added for distance. They stay on this device.':'Optional. Exact coordinates stay on this device.'}</p>`);
   const queries = S.preview?.queries || [];
-  return `<div class="section-icon">${icon('lock')}</div><p class="eyebrow">04 / REVIEW & FIND CARE</p><h2>Your information. Your control.</h2><p class="lede">Here’s what we’ll use to find your next step.</p><div class="review-list"><div><span>Your safety check</span><strong>${esc(S.safety?.headline||'Not checked')}</strong></div><div><span>Search area</span><strong>${esc(p.city)}, ${esc(p.state)} ${esc(p.zip)}</strong></div><div><span>Care</span><strong>${p.service==='follow_up'?'Primary-care follow-up':'Primary-care appointment'}</strong></div><div><span>Payment</span><strong>${p.insurance==='yes'?'Insurance + self-pay comparison':p.wants_insurance?'Self-pay + optional insurance scenario':'Self-pay; optional comparison later'}</strong></div></div><div class="privacy-box"><div>${icon('shield')}<strong>Stays on this device</strong></div><p>Health history, current concerns, medications, exact coordinates, benefits, and personal rankings.</p></div>
-    ${!S.state.unlocked?`<div class="branch"><h3>${S.state.vault_exists?'Unlock your private vault':'Create your private vault'}</h3>${field('Vault passphrase','passphrase','','password',`required minlength="8" maxlength="1000" autocomplete="${S.state.vault_exists?'current-password':'new-password'}"`)}<p class="hint">Encrypts saved care journeys on this computer. Keep your passphrase safe; there is no password recovery.</p></div>`:''}
-    ${S.preview?`<div class="branch"><h3>${queries.length?'Public search preview':'Ready to compare'}</h3>${queries.map(q=>`<div class="query"><span>${esc(q.provider)}</span><code>${esc(q.query)}</code></div>`).join('')}<p class="hint">${queries.length?`Recipients: ${S.preview.destinations.map(esc).join(', ')}. Search providers can infer a general interest in this care category.`:p.demo?'No external search. All sample providers, prices, reviews and plan relationships are fictional.':'No live search connection is configured. The Boston directory has official source links; prices and coverage require confirmation.'}</p>${queries.length?'<label class="checkline"><input type="checkbox" name="live" checked><span>Send these queries to find additional providers. Uncheck to use the local directory only.</span></label>':''}</div>`:'<p class="hint">The next step previews any public queries before you approve sending them.</p>'}`;
+  return `<div class="section-icon">${icon('lock')}</div><p class="eyebrow">04 / REVIEW & FIND CARE</p><h2>Your information. Your control.</h2><p class="lede">Here’s what we’ll use to find your next step.</p>`+
+    card('Your summary','',`<div class="review-list"><div><span>Your safety check</span><strong>${esc(S.safety?.headline||'Not checked')}</strong></div><div><span>Care</span><strong>${p.service==='follow_up'?'Primary-care follow-up':'Primary-care appointment'}</strong></div><div><span>Payment</span><strong>${p.insurance==='yes'?'Insurance + self-pay comparison':p.wants_insurance?'Self-pay + optional insurance scenario':'Self-pay; optional comparison later'}</strong></div><div><span>Search area</span><strong>${esc(p.city)}, ${esc(p.state)} ${esc(p.zip)}</strong></div></div>`)+
+    card('Help us prepare your visit','Optional. Used only on this device for your call script and doctor card.',`<label class="field"><span>Conditions, allergies, or clinician instructions</span><textarea name="history" maxlength="3000" rows="3">${esc(p.history)}</textarea></label>${field('Current medications','medications',p.medications,'text','maxlength="1000"')}`)+
+    card('What stays and what’s shared','',`<div class="share-split"><div><strong>${icon('lock')} Stays on this device</strong><p>Health details, history, medications, exact coordinates, benefits and rankings.</p></div><div><strong>${icon('pin')} Can be shared</strong><p>${S.preview?(queries.length?'The search below, only after you approve it.':'Nothing. No public search is configured.'):'City, state and ZIP for a public search. You’ll see it first.'}</p></div></div>
+      ${S.preview&&queries.length?`<div class="sub-card"><p class="sub-title">Public search preview</p>${queries.map(q=>`<div class="query"><span>${esc(q.provider)}</span><code>${esc(q.query)}</code></div>`).join('')}<p class="hint">Recipients: ${S.preview.destinations.map(esc).join(', ')}. Search providers can infer a general interest in this care category.</p><label class="checkline"><input type="checkbox" name="live" checked><span>Send these queries to find more providers. Uncheck to use the local directory only.</span></label></div>`:S.preview?`<p class="hint">${p.demo?'No external search. All sample providers, prices, reviews and plan relationships are fictional.':'The Boston directory has official source links; prices and coverage need confirmation.'}</p>`:''}`)+
+    (!S.state.unlocked?card(S.state.vault_exists?'Unlock your private vault':'Create your private vault','Encrypts your saved care journeys on this computer. There is no password recovery.',field('Vault passphrase','passphrase','','password',`required minlength="8" maxlength="1000" autocomplete="${S.state.vault_exists?'current-password':'new-password'}"`)):'');
 }
 function render() {
   renderHeader();
   if (S.step===4 && S.current) return renderResults();
-  $('#app').innerHTML = `<div class="wizard-layout">${sidebar()}<section class="form-panel">${S.input.demo?'<div class="demo-banner">FICTIONAL DEMO · No actual providers, prices, ratings or insurance offers</div>':''}<form id="wizard">${stepContent()}<div class="form-actions">${S.step>0?'<button type="button" class="text-button" data-action="back">← Back</button>':'<span class="small-note">A few steps to a clearer choice.</span>'}<button type="submit" class="primary">${S.step===3?(S.preview?'Find my care':'Review search'):'Continue'} ${icon('arrow')}</button></div><div id="working" role="status" class="working"></div></form></section></div>`;
+  $('#app').innerHTML = `<div class="wizard-layout">${sidebar()}<section class="form-panel">${S.input.demo?'<div class="demo-banner">FICTIONAL DEMO · No actual providers, prices, ratings or insurance offers</div>':''}<form id="wizard">${stepContent()}${S.step===0?'':`<div class="form-actions">${S.step>0?'<button type="button" class="text-button" data-action="back">← Back</button>':'<span class="small-note">A few steps to a clearer choice.</span>'}<button type="submit" class="primary">${S.step===3?(S.preview?'Find my care':'Review search'):'Continue'} ${icon('arrow')}</button></div>`}<div id="working" role="status" class="working"></div></form></section></div>`;
   $('#wizard').addEventListener('submit', event => {event.preventDefault(); advance();});
 }
 async function advance() {
   if (!$('#wizard').reportValidity()) return;
   collect();
   if(S.step===0){
-    if(!S.input.checks.length && !S.input.none_reported && !S.input.description.trim()) return toast('Tell us how you are feeling, or tick “Nothing feels wrong right now”.');
-    if(S.input.none_reported && S.input.checks.length) return toast('You ticked symptoms and “nothing feels wrong”. Please choose one.');
+    if(S.sub==='everyday' && !S.input.checks.length && !S.input.description.trim()) return toast('Pick what’s bothering you, or describe it in a few words.');
+    if(S.sub==='need'){
+      if(!S.input.need) return toast('Choose what you need.');
+      if(S.input.need==='unsure'){ S.sub='signs'; render(); return toast('Let’s check for warning signs first.'); }
+    }
     let r; try{ r=await api('/api/safety',{checks:S.input.checks,description:S.input.description}); }catch(e){ return toast(e.message); }
     S.safety=r;
     if(['emergency','same_day'].includes(r.level)){ render(); $('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
-    if(Number(S.input.age)<18){ render(); return toast('This version supports adults (18+). For a child or teen, contact a pediatric clinician.'); }
-    if(S.input.service==='unsure') { render(); return toast('Your safety check is above. To decide what care you need, a campus clinic or nurse line can help before you compare providers.'); }
+    if(S.input.feel==='unsure'){ render(); return toast('No warning signs. A campus clinic or nurse line can help you decide what care you need.'); }
   }
+  if(S.step===1 && Number(S.input.age)<18) return toast('This version supports adults (18+). For a child or teen, contact a pediatric clinician.');
   if(S.step===1 && !S.input.insurance) return toast('Choose whether you have insurance.');
   if(S.step<3) {S.step++; S.preview=null; render(); window.scrollTo(0,0); return;}
   await work(async()=>{
@@ -213,6 +250,14 @@ async function privacyDialog() {
 }
 document.addEventListener('click',event=>{
   const target=event.target.closest('button, [data-action]');if(!target||S.busy)return;
+  if(target.dataset.group){collect();const t=target.dataset.group;S.open.has(t)?S.open.delete(t):S.open.add(t);render();return;}
+  if(target.dataset.feel){const f=target.dataset.feel;Object.assign(S.input,{feel:f,checks:[],need:'',none_reported:f==='okay',service:'primary_care'});S.safety=null;S.sub=f==='okay'?'need':'signs';S.open=new Set();render();return;}
+  if(target.dataset.sign){const id=target.dataset.sign;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks.filter(x=>S.choices.some(c=>c.id===x&&lvl(c)==='emergency')),id];
+    return work(async()=>{S.safety=await api('/api/safety',{checks:S.input.checks});render();$('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'});});}
+  if(target.dataset.subNext){S.input.checks=S.input.checks.filter(x=>!S.choices.some(c=>c.id===x&&lvl(c)==='emergency'));S.safety=null;S.sub='everyday';S.open=new Set();render();return;}
+  if(target.dataset.chip){collect();const id=target.dataset.chip;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks,id];S.safety=null;render();return;}
+  if(target.dataset.need){collect();const n=NEEDS.find(x=>x[0]===target.dataset.need);S.input.need=n[0];S.input.service=n[3];S.input.checks=n[2]?[n[2]]:[];render();return;}
+  if(target.dataset.sub){collect();S.sub=target.dataset.sub;S.open=new Set();S.safety=null;if(S.sub==='start')S.input.checks=[];render();return;}
   if(target.dataset.insurance){collect();S.input.insurance=target.dataset.insurance;S.preview=null;render();return;}
   if(target.dataset.wants){collect();S.input.wants_insurance=target.dataset.wants==='yes';render();return;}
   if(target.dataset.quote)return quoteDialog(target.dataset.quote);
@@ -221,12 +266,12 @@ document.addEventListener('click',event=>{
   const action=target.dataset.action;
   if(action==='close')return closeDialog();
   if(action==='back'){collect();S.step--;S.preview=null;render();return;}
-  if(action==='home'||action==='new'){S.input=fresh();S.input.visit_date=S.state.today||today();S.safety=null;S.step=0;S.current=null;S.preview=null;render();return;}
-  if(action==='health'){collect();S.step=0;S.preview=null;render();window.scrollTo(0,0);return;}
+  if(action==='home'||action==='new'){S.input=fresh();S.input.visit_date=S.state.today||today();S.safety=null;S.sub='start';S.step=0;S.current=null;S.preview=null;render();return;}
+  if(action==='health'){collect();S.step=0;S.sub='start';S.safety=null;S.preview=null;render();window.scrollTo(0,0);return;}
   if(action==='boston'){collect();Object.assign(S.input,{city:'Boston',state:'MA',zip:'',lat:null,lon:null});render();return;}
   if(action==='demo'){
-    const year=today().slice(0,4);S.safety=null;S.input={...fresh(),demo:true,insurance:'no',wants_insurance:true,lat:42.3505,lon:-71.1054,language:'Chinese',budget:200,age:28,none_reported:true,
-      description:'My clinician recommended a routine primary-care follow-up.',plan:{name:'Demo Student PPO',rule:'copay',premium:95,copay:25,deductible_remaining:50,coinsurance:20,oop_remaining:3000,start:year+'-01-01',end:year+'-12-31',eligible:false}};S.step=0;S.preview=null;S.current=null;render();return;
+    const year=today().slice(0,4);S.safety=null;S.input={...fresh(),demo:true,insurance:'no',wants_insurance:true,lat:42.3505,lon:-71.1054,language:'Chinese',budget:200,age:28,none_reported:true,feel:'okay',need:'follow_up',service:'follow_up',
+      description:'My clinician recommended a routine primary-care follow-up.',plan:{name:'Demo Student PPO',rule:'copay',premium:95,copay:25,deductible_remaining:50,coinsurance:20,oop_remaining:3000,start:year+'-01-01',end:year+'-12-31',eligible:false}};S.step=0;S.sub='need';S.preview=null;S.current=null;render();return;
   }
   if(action==='geolocate'){
     collect();if(!navigator.geolocation)return toast('Device location is unavailable. Enter your city instead.');
@@ -238,11 +283,12 @@ document.addEventListener('click',event=>{
   if(action==='saved')return work(savedDialog);
   if(action==='privacy')return work(privacyDialog);
   if(action==='offline')return work(async()=>{S.state=await api('/api/offline',{offline:!S.state.offline});await privacyDialog();});
-  if(action==='lock')return work(async()=>{S.state=await api('/api/vault/lock',{});S.input=fresh();S.safety=null;S.current=null;S.step=0;S.preview=null;closeDialog();render();toast('Vault locked. Private information cleared from this page.');});
+  if(action==='lock')return work(async()=>{S.state=await api('/api/vault/lock',{});S.input=fresh();S.safety=null;S.sub='start';S.current=null;S.step=0;S.preview=null;closeDialog();render();toast('Vault locked. Private information cleared from this page.');});
   if(action==='model-prep')return work(async()=>{if($('#prep-output'))$('#prep-output').textContent='Preparing a draft with your local model…';showPrep(await api('/api/case/preparation',{id:S.current.id,use_model:true}));});
   if(action==='copy-prep')return work(async()=>{const script=$('#script-text')?.textContent;if(!script)throw Error('Prepare a script first.');await navigator.clipboard.writeText(script);toast('Copied. You control where you share it.');});
 });
+document.addEventListener('change',event=>{if(!event.target.name?.endsWith('_rule'))return;const box=event.target.closest('form')||document;box.querySelectorAll('[data-rule-fields]').forEach(el=>{el.hidden=el.dataset.ruleFields!==event.target.value;});});
 $('#dialog').addEventListener('cancel',()=>{$('#dialog').innerHTML='';});
 async function init(){try{S.state=await api('/api/state');S.input.visit_date=S.state.today;S.choices=(await api('/api/safety/choices')).choices;}catch(e){toast(e.message);}render();}
 init();
-setInterval(async()=>{if(S.busy||!S.state.unlocked)return;try{const state=await api('/api/state');if(!state.unlocked){S.state=state;S.input=fresh();S.safety=null;S.current=null;S.step=0;S.preview=null;closeDialog();render();toast('Your vault locked after inactivity. Unlock to resume your saved journey.');}}catch{}},30000);
+setInterval(async()=>{if(S.busy||!S.state.unlocked)return;try{const state=await api('/api/state');if(!state.unlocked){S.state=state;S.input=fresh();S.safety=null;S.sub='start';S.current=null;S.step=0;S.preview=null;closeDialog();render();toast('Your vault locked after inactivity. Unlock to resume your saved journey.');}}catch{}},30000);
