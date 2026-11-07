@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 from .benefits import cash_cost, clean_plan, comparison, insured_cost, number
 from .triage import CHECKS, decide
 
-SERVICES = {"primary_care": "Primary-care appointment", "follow_up": "Primary-care follow-up"}
+SERVICES = {"primary_care": "Primary-care appointment", "follow_up": "Primary-care follow-up",
+            "same_day": "Same-day visit for a non-emergency problem"}
 
 
 def text(value, length=300):
@@ -47,7 +48,7 @@ def clean_input(raw):
         raise ValueError("Choose whether you have insurance")
     service = raw.get("service", "primary_care")
     if service not in SERVICES:
-        raise ValueError("This version supports primary-care appointments and follow-ups")
+        raise ValueError("This version supports primary-care appointments, follow-ups and same-day care")
     visit_date = text(raw.get("visit_date"), 10)
     try:
         visit_date = date.fromisoformat(visit_date).isoformat()
@@ -58,8 +59,10 @@ def clean_input(raw):
     age = number(raw.get("age"), "Age", 120)
     adult = age >= 18 if age is not None else raw.get("adult") is True
     safety = safety_check(raw)
-    if safety and safety["level"] in ("emergency", "same_day"):
+    if safety and safety["level"] == "emergency":
         raise ValueError(safety["headline"])
+    if safety and safety["level"] == "same_day" and service != "same_day":
+        raise ValueError(safety["headline"] + " Choose “Find care today” to look for same-day care.")
     if not adult:
         raise ValueError("This version supports adults (18+). For a child or teen, contact a pediatric clinician.")
     if raw.get("routine_confirmed") is not True and safety is None:

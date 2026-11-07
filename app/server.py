@@ -14,6 +14,7 @@ from .catalog import candidates
 from .config import Config, ROOT
 from .egress import Egress, EgressBlocked, EgressError
 from .llm import LocalModel
+from .expect import expectations
 from .navigation import SERVICES, clean_input, from_search, ranked, safety_check, text, update_quote
 from .triage import checks_view, symptom_terms
 from .places import Places, plan_queries
@@ -90,12 +91,14 @@ class App:
                 person = clean_input(body)
                 public = {k: person[k] for k in ("city", "state", "zip")}
                 public["share_insurer"] = False
-                queries = [] if person["demo"] else plan_queries("primary_care", public, self.places.providers())
+                venue = "urgent_care" if person["service"] == "same_day" else "primary_care"
+                queries = [] if person["demo"] else plan_queries(venue, public, self.places.providers())
                 self.previews = {k: v for k, v in self.previews.items() if time.time() - v["at"] < 600}
                 token = secrets.token_urlsafe(24)
                 self.previews[token] = dict(input=person, queries=queries, public=public, at=time.time())
                 return dict(token=token, queries=[dict(provider=q["provider"], query=q["q"]) for q in queries],
-                            destinations=sorted(self.cfg.allowed_hosts()) if queries else [], demo=person["demo"])
+                            destinations=sorted(self.cfg.allowed_hosts()) if queries else [], demo=person["demo"],
+                            expect=expectations(person))
             if path == "/api/search" and method == "POST":
                 preview = self.previews.pop(body.get("token", ""), None)
                 if not preview or time.time() - preview["at"] > 600:
@@ -116,7 +119,7 @@ class App:
                 self.store.save()
                 if body.get("live") is True and preview["queries"] and not person["demo"]:
                     try:
-                        found = self.places.search("primary_care", preview["public"])
+                        found = self.places.search("urgent_care" if person["service"] == "same_day" else "primary_care", preview["public"])
                         seen = {p["url"] for p in case["providers"]}
                         case["providers"].extend(p for p in from_search(found, person["service"]) if p["url"] not in seen)
                         case["errors"] = found["errors"]
