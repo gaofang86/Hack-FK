@@ -107,8 +107,10 @@ def protected_values(data):
     add("member_id", profile.get("member_id"), _id_matcher(profile.get("member_id")))
     add("group_number", profile.get("group_number"), _id_matcher(profile.get("group_number")))
     for field in ("conditions", "medications", "allergies"):
-        for v in profile.get(field, []):
+        for v in profile.get(field, []) or []:
             add(field, v, _pattern_matcher(tu.phrase_pattern(v)))
+    for f in profile.get("follow_ups", []) or []:
+        add("follow_ups", f.get("what"), _pattern_matcher(tu.phrase_pattern(f.get("what", ""))))
     for case in data.get("cases", {}).values():
         for phrase in symptom_phrases(case.get("description", "")):
             add("symptoms", phrase, _pattern_matcher(tu.phrase_pattern(phrase)))

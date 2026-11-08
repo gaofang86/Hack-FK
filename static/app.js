@@ -18,14 +18,14 @@ const fresh = () => ({city:'Boston',state:'MA',zip:'',lat:null,lon:null,insuranc
   service:'primary_care',visit_date:today(),language:'English',description:'',history:'',medications:'',budget:'',
   priority:'balanced',months:1,adult:false,routine_confirmed:false,demo:false,plan:null,
   age:'',checks:[],none_reported:false,feel:'',need:''});
-const S = {step:0, input:fresh(), state:{services:{},cases:[]}, preview:null, current:null, busy:false, choices:[], safety:null, sub:'start', open:new Set()};
+const S = {step:0, input:fresh(), state:{services:{},cases:[]}, preview:null, current:null, busy:false, choices:[], safety:null, sub:'symptoms', open:new Set(), view:'loading', health:null, draft:null};
 
 async function api(path, body) {
   const response = await fetch(path, {method:body === undefined ? 'GET':'POST', headers:{'X-FirstVisit':'local','Content-Type':'application/json'}, ...(body === undefined ? {} : {body:JSON.stringify(body)})});
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 423 && S.state.unlocked) {
-      S.state.unlocked = false; S.current = null; S.input = fresh(); S.safety = null; S.expect = null; S.found = null; S.sub = 'start'; S.step = 0; S.preview = null; closeDialog(); render();
+      S.state.unlocked = false; S.current = null; S.input = fresh(); S.safety = null; S.expect = null; S.found = null; S.sub = 'symptoms'; S.view = 'gate'; S.health = null; S.step = 0; S.preview = null; closeDialog(); render();
     }
     throw new Error(data.error || 'Something went wrong. Please try again.');
   }
@@ -79,9 +79,10 @@ function collect() {
 function renderHeader() {
   $('#header').innerHTML = `<div class="header-inner"><button class="brand" data-action="home" aria-label="FirstVisit home"><span class="brand-icon">${icon('heart')}</span>firstvisit<span class="brand-dot">.</span></button><nav aria-label="Main navigation">
     <span class="privacy-pill">${icon('lock')} ${S.state.preview_mode?'Temporary preview · fictional data only':'Local & private'}</span>
+    ${S.state.unlocked?'<button class="nav-button" data-action="home-page">My health</button><button class="nav-button" data-action="known">What we know</button>':''}
     <button class="nav-button" data-action="saved">My care journeys</button>
     <button class="nav-button" data-action="privacy">Privacy</button>
-    ${S.state.unlocked ? '<button class="nav-button" data-action="lock">Lock vault</button>' : '<button class="nav-button" data-action="unlock">Unlock vault</button>'}
+    ${S.state.unlocked ? '<button class="nav-button" data-action="lock">Lock vault</button>' : S.state.vault_exists ? '<button class="nav-button" data-action="unlock">Unlock vault</button>' : ''}
     </nav></div>`;
 }
 function sidebar() {
@@ -90,6 +91,7 @@ function sidebar() {
 }
 const serviceName=v=>({follow_up:'Primary-care follow-up',same_day:'Same-day care (urgent care or campus clinic)'})[v]||'Primary-care appointment';
 const lvl=c=>['crisis','poison'].includes(c.level)?'emergency':c.level;
+const SYMPTOM_GROUPS=[['Chest and breathing',['chest_pain','breathing','cough']],['Head',['stroke','worst_headache','head_injury','fainted']],['Fever, throat and ears',['high_fever','fever','sore_throat']],['Belly',['belly_severe','blood_gut','belly_ache','fluids']],['Peeing',['urination']],['Arms, legs and back',['limb_broken','leg_swollen','injury','joint_pain']],['Skin, bleeding and allergies',['bleeding','allergy_severe','rash']],['Eyes',['eye']],['Mind and mood',['self_harm','mental']],['Swallowed something',['poison']],['Other',['severe_pain']]];
 const SIGN_GROUPS=[['Chest and breathing',['chest_pain','breathing']],['Head',['stroke','worst_headache','head_injury','fainted']],['Belly',['belly_severe','blood_gut']],['Arms and legs',['limb_broken','leg_swollen']],['Bleeding',['bleeding']],['Allergic reaction',['allergy_severe']],['Thoughts of hurting yourself',['self_harm']],['Swallowed something',['poison']]];
 const EVERYDAY_GROUPS=[['Fever, cough and throat',['high_fever','fever','cough','sore_throat']],['Belly',['belly_ache','fluids']],['Peeing',['urination']],['Arms, legs and back',['injury','joint_pain']],['Eyes',['eye']],['Skin',['rash']],['Bad pain',['severe_pain']],['Mood and stress',['mental']]];
 function grouped(items,groups){const used=new Set();const out=groups.map(([t,ids])=>{const g=ids.map(id=>items.find(c=>c.id===id)).filter(Boolean);g.forEach(c=>used.add(c.id));return [t,g];}).filter(([,g])=>g.length);const rest=items.filter(c=>!used.has(c.id));if(rest.length)out.push(['Other',rest]);return out;}
@@ -106,7 +108,15 @@ function safetyPanel(r){
   if(!r)return '';
   const urgent=['emergency','same_day'].includes(r.level);
   const venues={'911':'Call 911',er:'Emergency room',urgent_care:'Urgent care clinic',campus_health:'Campus health clinic',telehealth:'Telehealth (video visit)',primary_care:'Primary care appointment'};
-  return `<div class="safety-panel ${r.level}" role="${urgent?'alert':'status'}"><p class="eyebrow">YOUR SAFETY CHECK · ON THIS DEVICE</p><h3>${esc(r.headline)}</h3>${(r.hotlines||[]).map(h=>`<div class="hotline"><strong>${esc(h.name)}</strong><span>${esc(h.how)}</span></div>`).join('')}<p>${esc(r.why)}</p><p class="safety-options"><span>Good places to start:</span> ${r.options.map(o=>esc(venues[o]||o)).join(' · ')}</p>${r.rules.length?`<ul>${r.rules.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}${r.level==='emergency'?'<p class="safety-stop">Please get help now. This app won’t compare prices for an emergency. If something here is wrong, change your answers above.</p>':''}${r.level==='same_day'?`<div class="safety-next"><button type="button" class="primary" data-action="care-today">Find care today ${icon('arrow')}</button><span>We’ll look for urgent care and campus clinics near you, and show what to expect.</span></div>`:''}<small>${esc(r.disclaimer||'')}</small></div>`;
+  return `<div class="safety-panel ${r.level}" role="${urgent?'alert':'status'}"><p class="eyebrow">YOUR SAFETY CHECK · ON THIS DEVICE</p><h3>${esc(r.headline)}</h3>${(r.hotlines||[]).map(h=>`<div class="hotline"><strong>${esc(h.name)}</strong><span>${esc(h.how)}</span></div>`).join('')}<p>${esc(r.why)}</p><p class="safety-options"><span>Good places to start:</span> ${r.options.map(o=>esc(venues[o]||o)).join(' · ')}</p>${r.rules.length?`<ul>${r.rules.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}${r.level==='emergency'?`<div class="call-actions">${callButtons(r)}</div><p class="safety-stop">Please get help now. This app won’t compare prices for an emergency. If something here is wrong, change your answers above.</p>`:''}${r.level==='same_day'?`<div class="safety-next"><button type="button" class="primary" data-action="care-today">Find care today ${icon('arrow')}</button><span>We’ll look for urgent care and campus clinics near you, and show what to expect.</span></div>`:''}<small>${esc(r.disclaimer||'')}</small></div>`;
+}
+function callButtons(r){
+  const names=(r.hotlines||[]).map(h=>h.name).join(' '), crisis=names.includes('988'), poison=names.includes('Poison'), only=(crisis||poison)&&r.rules.every(x=>/hurting|killing|poison|medicine/i.test(x));
+  const b=[];
+  if(crisis) b.push(['tel:988','Call 988'],['sms:988','Text 988']);
+  if(poison) b.push(['tel:18002221222','Call Poison Control']);
+  b.splice(only?b.length:0,0,['tel:911','Call 911']);
+  return b.map(([h,t],i)=>`<a class="${i===0?'primary':'secondary'} call" href="${h}">${t}</a>`).join('');
 }
 function safetySummary(){
   const r=S.safety;if(!r)return '';
@@ -114,28 +124,17 @@ function safetySummary(){
 }
 function healthHead(title,lede){return `<div class="section-icon">${icon('heart')}</div><p class="eyebrow">01 / YOU & YOUR HEALTH</p><h2>${title}</h2><p class="lede">${lede}</p>`;}
 function healthStep(p){
-  const sub=S.sub, actions=(back,next)=>`<div class="form-actions">${back?`<button type="button" class="text-button" data-sub="${back}">← Back</button>`:'<span class="small-note">Everything here stays on this device.</span>'}${next||''}</div>`;
-  if(sub==='start') return healthHead('How are you feeling right now?','We start with you, not a map.')+
-    `<div class="feel-list">${FEELS.map(([id,t,d])=>`<button type="button" class="choice feel ${p.feel===id?'selected':''}" data-feel="${id}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div>`+actions('');
-  if(sub==='signs'){
-    const items=S.choices.filter(c=>lvl(c)==='emergency');
-    return healthHead('Do any of these apply right now?','Open a category to check. A fixed set of rules checks this on your computer.')+
-    groupCards(items,SIGN_GROUPS,'sign')+`
-    <div id="safety-result">${S.safety&&S.safety.level==='emergency'?safetyPanel(S.safety):''}</div>`+
-    actions('start',`<button type="button" class="primary" data-sub-next="none">None of these ${icon('arrow')}</button>`);
-  }
-  if(sub==='everyday'){
-    const items=S.choices.filter(c=>['same_day','soon'].includes(lvl(c)));
-    return healthHead('What’s bothering you?','Open a category and pick any that fit.')+
-    groupCards(items,EVERYDAY_GROUPS,'chip')+`
-    <label class="field"><span>Anything else? <small>Optional · stays local</small></span><textarea name="description" rows="2" maxlength="3000" placeholder="It started two days ago and gets worse at night.">${esc(p.description)}</textarea></label>
-    <div id="safety-result">${S.safety&&['emergency','same_day'].includes(S.safety.level)?safetyPanel(S.safety):''}</div>`+
-    actions('signs',`<button type="submit" class="primary">Continue ${icon('arrow')}</button>`);
-  }
-  return healthHead('What do you need?','No symptom questions needed.')+
+  const actions=next=>`<div class="form-actions"><button type="button" class="text-button" data-action="home-page">← Back</button>${next}</div>`;
+  const cont=`<button type="submit" class="primary">Continue ${icon('arrow')}</button>`;
+  if(S.sub==='need') return healthHead('What do you need?','No symptom questions needed.')+
     `<div class="chips">${NEEDS.map(([id,t])=>`<button type="button" class="chip ${p.need===id?'selected':''}" data-need="${id}">${t}</button>`).join('')}</div>
-    <label class="field"><span>Anything else? <small>Optional · stays local</small></span><textarea name="description" rows="2" maxlength="3000" placeholder="My doctor asked me to come back in two weeks.">${esc(p.description)}</textarea></label>`+
-    actions('start',`<button type="submit" class="primary">Continue ${icon('arrow')}</button>`);
+    <label class="field"><span>Anything else? <small>Optional · stays local</small></span><textarea name="description" rows="2" maxlength="3000" placeholder="My doctor asked me to come back in two weeks.">${esc(p.description)}</textarea></label>`+actions(cont);
+  const items=S.choices.filter(c=>c.level!=='routine');
+  return healthHead('What’s bothering you?','Open a part of the body and pick what fits. If something sounds serious, we’ll tell you right away.')+
+    groupCards(items,SYMPTOM_GROUPS,'chip')+
+    `<label class="field"><span>Anything else? <small>Optional · stays local</small></span><textarea name="description" rows="2" maxlength="3000" placeholder="It started two days ago and gets worse at night.">${esc(p.description)}</textarea></label>
+    <div id="safety-result">${S.safety&&['emergency','same_day'].includes(S.safety.level)?safetyPanel(S.safety):''}</div>`+
+    actions(S.safety?.level==='emergency'?'':cont);
 }
 function card(title,hint,body,cls=''){return `<section class="form-card ${cls}"><div class="form-card-head"><h3>${title}</h3>${hint?`<p>${hint}</p>`:''}</div>${body}</section>`;}
 function stepContent() {
@@ -144,7 +143,7 @@ function stepContent() {
   if (S.step===1) {
     const insured=p.insurance==='yes', exploring=p.insurance==='no'&&p.wants_insurance;
     return `<div class="section-icon">${icon('shield')}</div><p class="eyebrow">02 / WHAT MATTERS TO YOU</p><h2>How should care work for you?</h2><p class="lede">Your language and coverage shape every option we show.</p>${safetySummary()}`+
-    card('About you','Stays on this device.',`<div class="form-grid">${field('Your age','age',p.age,'number','required min="0" max="120" step="1" inputmode="numeric"')}${select('Preferred language','language',[['English','English'],['Chinese','Chinese / 中文'],['Spanish','Spanish / Español']],p.language)}</div>`)+
+    card('About you','Stays on this device.',`<div class="form-grid">${S.health?.age!=null?`<div class="field"><span>Your age</span><div class="from-profile">${S.health.age} <small>from your health profile</small></div><input type="hidden" name="age" value="${S.health.age}"></div>`:field('Your age','age',p.age,'number','required min="0" max="120" step="1" inputmode="numeric"')}${select('Preferred language','language',[['English','English'],['Chinese','Chinese / 中文'],['Spanish','Spanish / Español']],p.language)}</div>`)+
     card('Insurance','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${insured?'selected':''}" data-insurance="yes"><span class="choice-radio"></span><strong>Yes, I have insurance</strong><span>Use my benefits and compare my personal cost.</span></button><button type="button" class="choice ${p.insurance==='no'?'selected':''}" data-insurance="no"><span class="choice-radio"></span><strong>No insurance right now</strong><span>Explore self-pay care and optional coverage.</span></button></div>
       ${p.insurance==='no'?`<div class="sub-card"><p class="sub-title">Would you like to explore insurance?</p><div class="segmented"><button type="button" class="${!p.wants_insurance?'selected':''}" data-wants="no">Continue without it</button><button type="button" class="${p.wants_insurance?'selected':''}" data-wants="yes">Compare getting a plan</button></div><p class="hint">Check your school account first. You may already be enrolled in student coverage.</p></div>`:''}`)+
     (insured||exploring?card(insured?'Your current plan':'A plan you’re considering',insured?'Enter what you know. You can still find care before every benefit is confirmed.':'Use an actual plan quote, or leave this blank and explore options after your search.',planFields(p.plan)+planResources()):'');
@@ -161,8 +160,97 @@ function stepContent() {
       ${S.preview&&queries.length?`<div class="sub-card"><p class="sub-title">Public search preview</p>${queries.map(q=>`<div class="query"><span>${esc(q.provider)}</span><code>${esc(q.query)}</code></div>`).join('')}<p class="hint">Recipients: ${S.preview.destinations.map(esc).join(', ')}. Search providers can infer a general interest in this care category.</p><label class="checkline"><input type="checkbox" name="live" checked><span>Send these queries to find more providers. Uncheck to use the local directory only.</span></label></div>`:S.preview?`<p class="hint">${p.demo?'No external search. All sample providers, prices, reviews and plan relationships are fictional.':'The Boston directory has official source links; prices and coverage need confirmation.'}</p>`:''}`)+
     (!S.state.unlocked?card(S.state.vault_exists?'Unlock your private vault':'Create your private vault','Encrypts your saved care journeys on this computer. There is no password recovery.',field('Vault passphrase','passphrase','','password',`required minlength="8" maxlength="1000" autocomplete="${S.state.vault_exists?'current-password':'new-password'}"`)):'');
 }
+const pfield=(label,name,value,type='text',extra='')=>field(label,name,value,type,extra);
+function fromProfile(){
+  const h=S.health?.profile||{}, i=fresh();
+  Object.assign(i,{visit_date:S.state.today||today(),language:h.language||'English',insurance:h.insurance||'',wants_insurance:!!h.wants_insurance,plan:h.plan||null,
+    age:S.health?.age??'',history:[...(h.conditions||[]),...((h.allergies||[]).length?['Allergies: '+h.allergies.join(', ')]:[])].join('; '),medications:(h.medications||[]).join(', ')});
+  return i;
+}
+function startVisit(feel){
+  S.input=fromProfile(); Object.assign(S.input,{feel,none_reported:feel==='okay'});
+  S.sub=feel==='okay'?'need':'symptoms'; S.step=0; S.safety=null; S.open=new Set(); S.preview=null; S.current=null; S.expect=null; S.view='wizard'; render(); window.scrollTo(0,0);
+}
+function todoRow(t){
+  return `<div class="todo ${t.done_on?'done':''} ${t.urgent?'urgent':''}"><button type="button" class="todo-check" data-todo="${esc(t.id)}" aria-pressed="${!!t.done_on}" aria-label="Mark ${esc(t.title)} done">${t.done_on?icon('check'):''}</button><div><strong>${esc(t.title)}</strong><p>${esc(t.done_on?`Done on ${t.done_on}`:t.why)}${t.source?` · <a href="${esc(t.source.url)}" target="_blank" rel="noopener noreferrer">${esc(t.source.title)}</a>`:''}</p></div></div>`;
+}
+function renderHome(){
+  const h=S.health, p=h.profile, open=h.todos.filter(t=>!t.done_on), personal=open.filter(t=>['refill','follow_up'].includes(t.kind)), prevent=open.filter(t=>!['refill','follow_up'].includes(t.kind)), done=h.todos.filter(t=>t.done_on);
+  const list=(arr)=>arr.length?arr.map(t=>`<span class="tag">${esc(t)}</span>`).join(''):'<span class="muted">None added</span>';
+  $('#app').innerHTML=`<div class="home">
+  <p class="eyebrow">YOUR HEALTH, IN ONE PLACE</p><h1 class="home-title">${S.justCreated?'Your health, in one place.':'Welcome back.'}</h1><p class="lede">Everything here stays encrypted on this device. It grows with every visit.</p>
+  <section class="form-card need-card"><div class="form-card-head"><h3>What do you need today?</h3></div><div class="feel-row">${FEELS.map(([id,t,d])=>`<button type="button" class="choice feel" data-feel="${id}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div></section>
+  <div class="home-grid">
+    <section class="form-card"><div class="form-card-head row"><h3>Your health</h3><button type="button" class="text-button" data-action="edit-profile">Edit</button></div>
+      <div class="facts"><div><span>Age</span><strong>${h.age??'—'}</strong></div><div><span>Language</span><strong>${esc(p.language||'English')}</strong></div><div><span>Coverage</span><strong>${p.insurance==='yes'?esc(p.plan?.name||'Insured'):p.insurance==='no'?(p.wants_insurance?'Choosing a plan':'No insurance'):'—'}</strong></div></div>
+      <div class="fact-list"><span>Conditions</span><div>${list(p.conditions||[])}</div></div>
+      <div class="fact-list"><span>Medications</span><div>${list(p.medications||[])}</div></div>
+      <div class="fact-list"><span>Allergies</span><div>${list(p.allergies||[])}</div></div>
+      <div class="fact-list"><span>Follow-ups</span><div>${list((p.follow_ups||[]).map(f=>f.what+(f.due?` · ${f.due}`:'')))}</div></div></section>
+    <section class="form-card"><div class="form-card-head"><h3>Your to-dos</h3><p>From your profile and official guidance. Ask a clinician what fits you.</p></div>
+      ${personal.length?`<p class="sub-title">For you</p>${personal.map(todoRow).join('')}`:''}
+      ${prevent.length?`<p class="sub-title">Checkups and vaccines for your age</p>${prevent.map(todoRow).join('')}`:'<p class="hint">Add your birth year to see checkups and vaccines for your age.</p>'}
+      ${done.length?`<details class="private-details"><summary>Done (${done.length})</summary>${done.map(todoRow).join('')}</details>`:''}</section>
+    <section class="form-card"><div class="form-card-head"><h3>Better choices</h3></div>${h.choices.map(c=>`<div class="choice-tip"><strong>${esc(c.title)}</strong><p>${esc(c.why)}${c.source?` · <a href="${esc(c.source.url)}" target="_blank" rel="noopener noreferrer">${esc(c.source.title)}</a>`:''}</p></div>`).join('')}</section>
+  </div></div>`;
+}
+function listRows(kind,rows){
+  const [a,b,la,lb,ta]=kind==='med'?['name','refill_by','Medication','Runs out (optional)','text']:['what','due','What','Due (optional)','text'];
+  return `<div class="rows">${rows.map((r,i)=>`<div class="row-2">${field(la,`${kind}_${a}_${i}`,r[a],ta,'maxlength="160"')}${field(lb,`${kind}_${b}_${i}`,r[b],'date')}</div>`).join('')}</div><button type="button" class="secondary small" data-add-row="${kind}">+ Add ${kind==='med'?'medication':'follow-up'}</button>`;
+}
+function renderProfile(){
+  const d=S.draft, first=!S.state.vault_exists||!S.state.profile_ready;
+  $('#app').innerHTML=`<div class="home"><form id="profile-form"><p class="eyebrow">${first?'START HERE':'YOUR HEALTH PROFILE'}</p><h1 class="home-title">${first?'Let’s get to know your health.':'Your health profile'}</h1><p class="lede">It stays encrypted on this device and grows with every visit. Skip anything you don’t want to add.</p>
+    ${card('About you','Your age decides which checkups and vaccines we suggest.',`<div class="form-grid three">${field('Birth year','birth_year',d.birth_year??'','number','min="1900" max="'+new Date().getFullYear()+'" step="1" inputmode="numeric" required')}${select('Sex (optional)','sex',[['','Prefer not to say'],['female','Female'],['male','Male']],d.sex||'')}${select('Preferred language','language',[['English','English'],['Chinese','Chinese / 中文'],['Spanish','Spanish / Español']],d.language||'English')}</div><p class="hint">Sex is only used for screenings like cervical or breast cancer checks.</p>`)}
+    ${card('Ongoing health','Optional. Separate items with commas.',`<label class="field"><span>Conditions</span><textarea name="conditions" rows="2" maxlength="2000" placeholder="Asthma, migraines">${esc((d.conditions||[]).join(', '))}</textarea></label><label class="field"><span>Allergies</span><textarea name="allergies" rows="2" maxlength="2000" placeholder="Penicillin, peanuts">${esc((d.allergies||[]).join(', '))}</textarea></label>`)}
+    ${card('Medications','We’ll remind you before one runs out.',listRows('med',d.meds))}
+    ${card('Follow-ups','Visits or tests a clinician asked you to come back for.',listRows('fu',d.fus))}
+    ${card('Coverage','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${d.insurance==='yes'?'selected':''}" data-pins="yes"><span class="choice-radio"></span><strong>Yes</strong><span>I have a plan</span></button><button type="button" class="choice ${d.insurance==='no'?'selected':''}" data-pins="no"><span class="choice-radio"></span><strong>Not right now</strong><span>Self-pay, or choosing a plan</span></button></div>${d.insurance==='yes'?`<div class="sub-card"><p class="sub-title">Your plan</p>${field('Exact plan name','pplan_name',d.plan?.name||'','text','maxlength="120"')}</div>`:''}${d.insurance==='no'?`<label class="checkline"><input type="checkbox" name="wants_insurance" ${d.wants_insurance?'checked':''}><span>I’m thinking about getting a plan</span></label>`:''}`)}
+    ${!S.state.vault_exists?card('Save it privately','Choose a passphrase. It encrypts your profile on this computer. There is no recovery.',field('Passphrase','passphrase','','password','required minlength="8" maxlength="1000" autocomplete="new-password"')):''}
+    <div class="form-actions">${first?'<span class="small-note">You can change this anytime.</span>':'<button type="button" class="text-button" data-action="home-page">← Cancel</button>'}<button type="submit" class="primary">${first?'Save and continue':'Save'} ${icon('arrow')}</button></div></form></div>`;
+  $('#profile-form').addEventListener('submit',e=>{e.preventDefault();saveProfile();});
+}
+function readDraft(){
+  const f=$('#profile-form'); if(!f) return; const g=n=>f.elements[n]?.value??'';
+  Object.assign(S.draft,{birth_year:g('birth_year'),sex:g('sex'),language:g('language'),conditions:g('conditions').split(',').map(x=>x.trim()).filter(Boolean),allergies:g('allergies').split(',').map(x=>x.trim()).filter(Boolean),
+    meds:S.draft.meds.map((_,i)=>({name:g(`med_name_${i}`),refill_by:g(`med_refill_by_${i}`)})),fus:S.draft.fus.map((_,i)=>({what:g(`fu_what_${i}`),due:g(`fu_due_${i}`)})),
+    wants_insurance:f.elements.wants_insurance?f.elements.wants_insurance.checked:S.draft.wants_insurance});
+  if(f.elements.pplan_name) S.draft.plan={...(S.draft.plan||{}),name:g('pplan_name')};
+}
+function editProfile(){
+  const p=S.health?.profile||{}, r=p.refills||{};
+  S.draft={birth_year:p.birth_year,sex:p.sex,language:p.language,conditions:p.conditions||[],allergies:p.allergies||[],insurance:p.insurance||'',wants_insurance:!!p.wants_insurance,plan:p.plan,
+    meds:(p.medications||[]).map(n=>({name:n,refill_by:r[n]||''})).concat([{name:'',refill_by:''}]),fus:(p.follow_ups||[]).map(f=>({...f})).concat([{what:'',due:''}])};
+  S.view='profile'; render(); window.scrollTo(0,0);
+}
+async function saveProfile(){
+  if(!$('#profile-form').reportValidity()) return; readDraft(); const d=S.draft;
+  await work(async()=>{
+    if(!S.state.vault_exists){ const pass=$('[name="passphrase"]').value; S.state=await api('/api/vault/create',{passphrase:pass}); }
+    S.justCreated=!S.state.profile_ready;
+    const plan=d.insurance==='yes'&&d.plan?.name?{rule:'copay',...d.plan}:(d.plan?.name?d.plan:null);
+    S.health=await api('/api/profile',{birth_year:d.birth_year,sex:d.sex,language:d.language,conditions:d.conditions,allergies:d.allergies,medications:d.meds.filter(m=>m.name.trim()),follow_ups:d.fus.filter(f=>f.what.trim()),insurance:d.insurance,wants_insurance:d.insurance==='no'&&d.wants_insurance,plan});
+    S.state=await api('/api/state'); S.view='home'; render(); window.scrollTo(0,0); toast('Saved on this device.');
+  });
+}
+function renderGate(){
+  $('#app').innerHTML=`<div class="home narrow"><p class="eyebrow">WELCOME BACK</p><h1 class="home-title">Unlock your health profile.</h1><p class="lede">A health profile is saved on this computer. It’s encrypted, so it needs your passphrase. For your privacy it locks itself after a while.</p><form id="gate-form"><section class="form-card">${field('Your passphrase','passphrase','','password','required minlength="8" maxlength="1000" autocomplete="current-password"')}${S.state.preview_mode?'<p class="hint">Test preview passphrase: <code>firstvisit-preview-only</code></p>':''}</section><div class="form-actions"><span class="small-note">Nothing is sent anywhere.</span><button type="submit" class="primary">Unlock ${icon('arrow')}</button></div></form>
+  <section class="form-card new-here"><div class="form-card-head"><h3>New here, or forgot your passphrase?</h3><p>Start a new profile. This erases the saved profile on this computer. There’s no way to recover it.</p></div><button type="button" class="secondary" data-action="start-over">Start a new profile</button></section></div>`;
+  $('#gate-form').addEventListener('submit',e=>{e.preventDefault();work(async()=>{S.state=await api('/api/vault/unlock',{passphrase:$('[name="passphrase"]').value});await afterUnlock();});});
+}
+async function afterUnlock(){ S.justCreated=false; S.health=await api('/api/profile'); if(S.health.complete){S.view='home';}else{editProfile();return;} render(); }
+function renderKnown(){
+  const p=S.health.profile, row=(field,value,label)=>`<div class="known-row"><span>${esc(label)}</span><button type="button" class="text-button" data-forget="${field}" data-value="${esc(value)}">Forget</button></div>`;
+  const rows=[...(p.birth_year?[row('birth_year','',`Birth year ${p.birth_year}`)]:[]),...(p.sex?[row('sex','',`Sex: ${p.sex}`)]:[]),...(p.conditions||[]).map(v=>row('conditions',v,`Condition: ${v}`)),...(p.medications||[]).map(v=>row('medications',v,`Medication: ${v}`)),...(p.allergies||[]).map(v=>row('allergies',v,`Allergy: ${v}`)),...(p.follow_ups||[]).map(f=>row('follow_ups',f.what,`Follow-up: ${f.what}`)),...(p.plan?[row('plan','',`Plan: ${p.plan.name}`)]:[]),row('visits','',`Saved care journeys: ${S.state.cases.length}`)];
+  $('#app').innerHTML=`<div class="home narrow"><p class="eyebrow">WHAT WE KNOW</p><h1 class="home-title">Everything FirstVisit knows about you.</h1><p class="lede">All of it is encrypted on this device. None of it is sent with searches.</p>${card('Your saved information','Forget any item. This can’t be undone.',`<div class="known">${rows.join('')}</div>`)}<div class="form-actions"><button type="button" class="text-button" data-action="home-page">← Back</button><button type="button" class="secondary" data-forget="everything">Forget everything</button></div></div>`;
+}
 function render() {
   renderHeader();
+  if (S.view==='loading') { $('#app').innerHTML='<div class="home"><p class="lede">Loading…</p></div>'; return; }
+  if (S.view==='gate') return renderGate();
+  if (S.view==='profile') return renderProfile();
+  if (S.view==='home') return renderHome();
+  if (S.view==='known') return renderKnown();
   if (S.expect) return renderExpect();
   if (S.step===4 && S.current) return renderResults();
   $('#app').innerHTML = `<div class="wizard-layout">${sidebar()}<section class="form-panel">${S.input.demo?'<div class="demo-banner">FICTIONAL DEMO · No actual providers, prices, ratings or insurance offers</div>':''}<form id="wizard">${stepContent()}${S.step===0?'':`<div class="form-actions">${S.step>0?'<button type="button" class="text-button" data-action="back">← Back</button>':'<span class="small-note">A few steps to a clearer choice.</span>'}<button type="submit" class="primary">${S.step===3?(S.preview?'Find my care':'Review search'):'Continue'} ${icon('arrow')}</button></div>`}<div id="working" role="status" class="working"></div></form></section></div>`;
@@ -172,15 +260,14 @@ async function advance() {
   if (!$('#wizard').reportValidity()) return;
   collect();
   if(S.step===0){
-    if(S.sub==='everyday' && !S.input.checks.length && !S.input.description.trim()) return toast('Pick what’s bothering you, or describe it in a few words.');
+    if(S.sub==='symptoms' && !S.input.checks.length && !S.input.description.trim()) return toast('Pick what’s bothering you, or describe it in a few words.');
     if(S.sub==='need'){
       if(!S.input.need) return toast('Choose what you need.');
-      if(S.input.need==='unsure'){ S.sub='signs'; render(); return toast('Let’s check for warning signs first.'); }
+      if(S.input.need==='unsure'){ S.sub='symptoms'; S.input.feel='unsure'; render(); return toast('Tell us what’s going on first.'); }
     }
     let r; try{ r=await api('/api/safety',{checks:S.input.checks,description:S.input.description}); }catch(e){ return toast(e.message); }
     S.safety=r;
     if(r.level==='emergency' || (r.level==='same_day' && S.input.service!=='same_day')){ render(); $('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
-    if(S.input.feel==='unsure'){ render(); return toast('No warning signs. A campus clinic or nurse line can help you decide what care you need.'); }
   }
   if(S.step===1 && Number(S.input.age)<18) return toast('This version supports adults (18+). For a child or teen, contact a pediatric clinician.');
   if(S.step===1 && !S.input.insurance) return toast('Choose whether you have insurance.');
@@ -275,11 +362,16 @@ async function privacyDialog() {
 document.addEventListener('click',event=>{
   const target=event.target.closest('button, [data-action]');if(!target||S.busy)return;
   if(target.dataset.group){collect();const t=target.dataset.group;S.open.has(t)?S.open.delete(t):S.open.add(t);render();return;}
-  if(target.dataset.feel){const f=target.dataset.feel;Object.assign(S.input,{feel:f,checks:[],need:'',none_reported:f==='okay',service:'primary_care'});S.safety=null;S.sub=f==='okay'?'need':'signs';S.open=new Set();render();return;}
-  if(target.dataset.sign){const id=target.dataset.sign;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks.filter(x=>S.choices.some(c=>c.id===x&&lvl(c)==='emergency')),id];
+  if(target.dataset.feel)return startVisit(target.dataset.feel);
+  if(target.dataset.pins){readDraft();S.draft.insurance=target.dataset.pins;renderProfile();return;}
+  if(target.dataset.addRow){readDraft();(target.dataset.addRow==='med'?S.draft.meds:S.draft.fus).push(target.dataset.addRow==='med'?{name:'',refill_by:''}:{what:'',due:''});renderProfile();return;}
+  if(target.dataset.todo){const t=S.health.todos.find(x=>x.id===target.dataset.todo);return work(async()=>{S.health=await api('/api/profile/todo',{id:t.id,done:!t.done_on});render();});}
+  if(target.dataset.forget){const f=target.dataset.forget;if(f==='everything'&&!confirm('Forget your whole profile and all saved care journeys? This can’t be undone.'))return;return work(async()=>{S.health=await api('/api/profile/forget',{field:f,value:target.dataset.value||''});S.state=await api('/api/state');if(f==='everything'){editProfile();return;}render();});}
+  if(target.dataset.sign){S.input.no_signs=false;const id=target.dataset.sign;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks.filter(x=>S.choices.some(c=>c.id===x&&lvl(c)==='emergency')),id];
     return work(async()=>{S.safety=await api('/api/safety',{checks:S.input.checks});render();$('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'});});}
-  if(target.dataset.subNext){S.input.checks=S.input.checks.filter(x=>!S.choices.some(c=>c.id===x&&lvl(c)==='emergency'));S.safety=null;S.sub='everyday';S.open=new Set();render();return;}
-  if(target.dataset.chip){collect();if(S.input.service==='same_day')S.input.service='primary_care';const id=target.dataset.chip;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks,id];S.safety=null;render();return;}
+  if(target.dataset.none){S.input.no_signs=!S.input.no_signs;if(S.input.no_signs){S.input.checks=S.input.checks.filter(x=>!S.choices.some(c=>c.id===x&&lvl(c)==='emergency'));S.safety=null;}render();return;}
+  if(target.dataset.chip){collect();if(S.input.service==='same_day')S.input.service='primary_care';const id=target.dataset.chip;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks,id];
+    return work(async()=>{const r=await api('/api/safety',{checks:S.input.checks,description:S.input.description});S.safety=r.level==='emergency'?r:null;render();if(S.safety)$('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'});});}
   if(target.dataset.need){collect();const n=NEEDS.find(x=>x[0]===target.dataset.need);S.input.need=n[0];S.input.service=n[3];S.input.checks=n[2]?[n[2]]:[];render();return;}
   if(target.dataset.sub){collect();S.sub=target.dataset.sub;S.open=new Set();S.safety=null;if(S.sub==='start')S.input.checks=[];render();return;}
   if(target.dataset.insurance){collect();S.input.insurance=target.dataset.insurance;S.preview=null;render();return;}
@@ -290,14 +382,19 @@ document.addEventListener('click',event=>{
   const action=target.dataset.action;
   if(action==='close')return closeDialog();
   if(action==='back'){collect();S.step--;S.preview=null;render();return;}
-  if(action==='home'||action==='new'){S.input=fresh();S.input.visit_date=S.state.today||today();S.safety=null;S.expect=null;S.found=null;S.sub='start';S.step=0;S.current=null;S.preview=null;render();return;}
+  if((action==='home'||action==='new')&&S.state.unlocked){S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.current=null;S.preview=null;S.view='home';return work(async()=>{S.health=await api('/api/profile');render();window.scrollTo(0,0);});}
+  if(action==='home'||action==='new'){S.input=fresh();S.input.visit_date=S.state.today||today();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.step=0;S.current=null;S.preview=null;render();return;}
+  if(action==='home-page'){if(!S.state.unlocked){S.view='gate';render();return;}S.view='home';S.expect=null;S.current=null;return work(async()=>{S.health=await api('/api/profile');render();window.scrollTo(0,0);});}
+  if(action==='edit-profile')return editProfile();
+  if(action==='start-over'){if(!confirm('Erase the saved health profile on this computer and start a new one? This can’t be undone.'))return;return work(async()=>{S.state=await api('/api/vault/reset',{confirm:'erase'});S.health=null;S.state.profile_ready=false;editProfile();});}
+  if(action==='known'){S.view='known';return work(async()=>{S.health=await api('/api/profile');render();window.scrollTo(0,0);});}
   if(action==='care-today'){collect();S.input.service='same_day';return advance();}
-  if(action==='see-places'){S.current=S.found;S.found=null;S.expect=null;S.step=4;render();window.scrollTo(0,0);return;}
-  if(action==='health'){collect();S.step=0;S.sub='start';S.safety=null;S.preview=null;render();window.scrollTo(0,0);return;}
+  if(action==='see-places'){S.view='wizard';S.current=S.found;S.found=null;S.expect=null;S.step=4;render();window.scrollTo(0,0);return;}
+  if(action==='health'){collect();S.step=0;S.sub='symptoms';S.safety=null;S.preview=null;render();window.scrollTo(0,0);return;}
   if(action==='boston'){collect();Object.assign(S.input,{city:'Boston',state:'MA',zip:'',lat:null,lon:null});render();return;}
   if(action==='demo'){
     const year=today().slice(0,4);S.safety=null;S.input={...fresh(),demo:true,insurance:'no',wants_insurance:true,lat:42.3505,lon:-71.1054,language:'Chinese',budget:200,age:28,none_reported:true,feel:'okay',need:'follow_up',service:'follow_up',
-      description:'My clinician recommended a routine primary-care follow-up.',plan:{name:'Demo Student PPO',rule:'copay',premium:95,copay:25,deductible_remaining:50,coinsurance:20,oop_remaining:3000,start:year+'-01-01',end:year+'-12-31',eligible:false}};S.step=0;S.sub='need';S.preview=null;S.current=null;render();return;
+      description:'My clinician recommended a routine primary-care follow-up.',plan:{name:'Demo Student PPO',rule:'copay',premium:95,copay:25,deductible_remaining:50,coinsurance:20,oop_remaining:3000,start:year+'-01-01',end:year+'-12-31',eligible:false}};S.step=0;S.sub='need';S.view='wizard';S.preview=null;S.current=null;render();return;
   }
   if(action==='geolocate'){
     collect();if(!navigator.geolocation)return toast('Device location is unavailable. Enter your city instead.');
@@ -305,16 +402,19 @@ document.addEventListener('click',event=>{
   }
   if(action==='plan')return planDialog();
   if(action==='contact')return contactDialog();
-  if(action==='unlock')return unlockDialog();
+  if(action==='unlock'){S.view='gate';render();return;}
   if(action==='saved')return work(savedDialog);
   if(action==='privacy')return work(privacyDialog);
   if(action==='offline')return work(async()=>{S.state=await api('/api/offline',{offline:!S.state.offline});await privacyDialog();});
-  if(action==='lock')return work(async()=>{S.state=await api('/api/vault/lock',{});S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='start';S.current=null;S.step=0;S.preview=null;closeDialog();render();toast('Vault locked. Private information cleared from this page.');});
+  if(action==='lock')return work(async()=>{S.state=await api('/api/vault/lock',{});S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.current=null;S.step=0;S.preview=null;S.health=null;S.view='gate';closeDialog();render();toast('Vault locked. Private information cleared from this page.');});
   if(action==='model-prep')return work(async()=>{if($('#prep-output'))$('#prep-output').textContent='Preparing a draft with your local model…';showPrep(await api('/api/case/preparation',{id:S.current.id,use_model:true}));});
   if(action==='copy-prep')return work(async()=>{const script=$('#script-text')?.textContent;if(!script)throw Error('Prepare a script first.');await navigator.clipboard.writeText(script);toast('Copied. You control where you share it.');});
 });
 document.addEventListener('change',event=>{if(!event.target.name?.endsWith('_rule'))return;const box=event.target.closest('form')||document;box.querySelectorAll('[data-rule-fields]').forEach(el=>{el.hidden=el.dataset.ruleFields!==event.target.value;});});
 $('#dialog').addEventListener('cancel',()=>{$('#dialog').innerHTML='';});
-async function init(){try{S.state=await api('/api/state');S.input.visit_date=S.state.today;S.choices=(await api('/api/safety/choices')).choices;}catch(e){toast(e.message);}render();}
+async function init(){try{S.state=await api('/api/state');S.input.visit_date=S.state.today;S.choices=(await api('/api/safety/choices')).choices;
+  if(S.state.unlocked){await afterUnlock();return;}
+  if(S.state.vault_exists){S.view='gate';}else{S.state.profile_ready=false;editProfile();return;}
+}catch(e){toast(e.message);S.view='gate';}render();}
 init();
-setInterval(async()=>{if(S.busy||!S.state.unlocked)return;try{const state=await api('/api/state');if(!state.unlocked){S.state=state;S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='start';S.current=null;S.step=0;S.preview=null;closeDialog();render();toast('Your vault locked after inactivity. Unlock to resume your saved journey.');}}catch{}},30000);
+setInterval(async()=>{if(S.busy||!S.state.unlocked)return;try{const state=await api('/api/state');if(!state.unlocked){S.state=state;S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.current=null;S.step=0;S.preview=null;S.health=null;S.view='gate';closeDialog();render();toast('Your vault locked after inactivity. Unlock to resume your saved journey.');}}catch{}},30000);

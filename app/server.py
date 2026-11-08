@@ -15,6 +15,7 @@ from .config import Config, ROOT
 from .egress import Egress, EgressBlocked, EgressError
 from .llm import LocalModel
 from .expect import expectations
+from .health import clean_profile, view as health_view
 from .navigation import SERVICES, clean_input, from_search, ranked, safety_check, text, update_quote
 from .triage import checks_view, symptom_terms
 from .places import Places, plan_queries
@@ -41,7 +42,8 @@ class App:
                          for c in self.store.data["cases"].values() if "input" in c]
         return dict(unlocked=self.store.unlocked, vault_exists=self.store.exists(), offline=self.egress.offline,
                     preview_mode=getattr(self, "preview_mode", False),
-                    services=self.cfg.services(), cases=sorted(summaries, key=lambda c: -c["created"]), today=date.today().isoformat())
+                    services=self.cfg.services(), cases=sorted(summaries, key=lambda c: -c["created"]), today=date.today().isoformat(),
+                    profile_ready=bool(self.store.unlocked and self.store.data["profile"].get("birth_year")))
 
     def get_case(self, ident):
         case = self.store.require()["cases"].get(ident)
@@ -54,7 +56,8 @@ class App:
 
     def dispatch(self, method, path, body, query):
         with self.mutex:
-            if self.store.unlocked and time.time() - self.store.last_activity > self.cfg.idle_lock_minutes * 60:
+            if (self.store.unlocked and not getattr(self, "preview_mode", False)
+                    and time.time() - self.store.last_activity > self.cfg.idle_lock_minutes * 60):
                 self.store.lock_vault()
             if path == "/api/state" and method == "GET":
                 return self.state()
@@ -71,12 +74,55 @@ class App:
                 return dict(result, choices=checks_view())
             if path == "/api/safety/choices" and method == "GET":
                 return dict(choices=checks_view())
+            if path == "/api/vault/reset" and method == "POST":
+                # Forgotten passphrase or a new person on this computer: erase the encrypted profile and start over.
+                if body.get("confirm") != "erase":
+                    raise ValueError("Confirm that you want to erase the saved profile")
+                self.previews.clear()
+                self.store.wipe()
+                return self.state()
             self.store.require()
             self.store.touch()
             if path == "/api/vault/lock" and method == "POST":
                 self.previews.clear()
                 self.store.lock_vault()
                 return self.state()
+            if path == "/api/profile" and method == "GET":
+                return health_view(self.store.data["profile"])
+            if path == "/api/profile" and method == "POST":
+                profile = self.store.data["profile"]
+                profile.update(clean_profile(body))
+                self.store.save()
+                return health_view(profile)
+            if path == "/api/profile/todo" and method == "POST":
+                done = self.store.data["profile"].setdefault("done", {})
+                ident = text(body.get("id"), 200)
+                if body.get("done") is True:
+                    done[ident] = date.today().isoformat()
+                else:
+                    done.pop(ident, None)
+                self.store.save()
+                return health_view(self.store.data["profile"])
+            if path == "/api/profile/forget" and method == "POST":
+                profile, field, value = self.store.data["profile"], body.get("field"), text(body.get("value"), 200)
+                if field in ("conditions", "allergies", "medications"):
+                    profile[field] = [v for v in profile.get(field, []) if v != value]
+                    if field == "medications":
+                        profile.get("refills", {}).pop(value, None)
+                elif field == "follow_ups":
+                    profile["follow_ups"] = [f for f in profile.get("follow_ups", []) if f["what"] != value]
+                elif field in ("birth_year", "sex", "plan"):
+                    profile[field] = None if field != "sex" else ""
+                elif field == "visits":
+                    self.store.data["cases"] = {}
+                elif field == "everything":
+                    keep = {k: profile[k] for k in ("city", "state", "zip") if k in profile}
+                    profile.clear(); profile.update(keep)
+                    self.store.data["cases"] = {}
+                else:
+                    raise ValueError("Choose what to forget")
+                self.store.save()
+                return health_view(profile)
             if path == "/api/offline" and method == "POST":
                 self.egress.offline = body.get("offline") is True
                 return self.state()
@@ -112,10 +158,7 @@ class App:
                                            *symptom_terms((person.get("safety") or {}).get("checks", []))],
                             providers=candidates(person["city"], person["state"], person["demo"], person["service"]), errors=[])
                 self.store.data["cases"][ident] = case
-                # Register private values before any external request. No raw narrative enters the search planner.
-                profile = self.store.data["profile"]
-                profile.update(conditions=[person["history"]] if person["history"] else [],
-                               medications=[person["medications"]] if person["medications"] else [])
+                # The profile is never overwritten by a search; this case's own private text is registered above.
                 self.store.save()
                 if body.get("live") is True and preview["queries"] and not person["demo"]:
                     try:
