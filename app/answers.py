@@ -9,7 +9,7 @@ Entry points (kind ids kept for saved-task compatibility):
   first_visit -> A. I'm new here — set me up
   concern     -> B. Something's wrong — where do I go?
   follow_up   -> C. A clinician told me to do something, or I got results (legacy 'report' too)
-  insurance   -> D. Figure out my insurance
+  insurance   -> D. My insurance: benefits & costs
 """
 import re
 from datetime import date
@@ -134,10 +134,10 @@ def settle(m, profile):
                               'Many schools enroll students automatically. Your coverage decides what to ask a clinic and what you pay.'),
                       source=_src('neu_plan'))],
             cost=[T('未知，不按 0 计算：先确定保险', 'Unknown, not $0: settle coverage first')],
-            do_now=dict(text=T('去「弄懂我的保险」，答完会自动回到这里。', 'Go to “Figure out my insurance”; your answer carries back here.'), script=''),
+            do_now=dict(text=T('去「我的保险：福利与费用」，答完会自动回到这里。', 'Go to “My insurance: benefits & costs”; your answer carries back here.'), script=''),
             unknown=[T('你是否已经被学校计划覆盖：查学生账户或计划网站', 'Whether your school plan already covers you: check your student account or the plan site')],
             then=T('确定保险后，选一个常规医生', 'Once coverage is settled: pick a regular doctor'),
-            clinics=[], actions=[dict(id='go-insurance', label=T('弄懂我的保险', 'Figure out my insurance'), primary=True)])
+            clinics=[], actions=[dict(id='go-insurance', label=T('我的保险：福利与费用', 'My insurance: benefits & costs'), primary=True)])
     insured = cov == 'insured'
     clinics, matched = _pick(m['zip'], community=not insured)
     first, where = clinics[0], _where(m['zip'], matched)
@@ -178,7 +178,7 @@ def settle(m, profile):
                          dict(id='doctor-search', label=T('按医生或诊所名字找', 'Find by doctor or clinic name'), primary=False)])
 
 
-# ---- D. Figure out my insurance -------------------------------------------------------------
+# ---- D. My insurance: benefits & costs -------------------------------------------------------------
 
 def _insurance_stages(cov):
     middle = T('比较计划', 'Compare plans') if cov == 'choosing' else T('讲清楚你的情况', 'Your options in plain words')
@@ -433,7 +433,7 @@ def sick(m, profile, safety):
     if level == 'routine':
         actions.insert(0, dict(id='go-settle', label=T('找一个常规医生', 'Find a regular doctor'), primary=True))
     if cov in ('not_sure', 'choosing'):
-        actions.insert(0, dict(id='go-insurance', label=T('弄懂我的保险', 'Figure out my insurance'), primary=level == 'routine'))
+        actions.insert(0, dict(id='go-insurance', label=T('我的保险：福利与费用', 'My insurance: benefits & costs'), primary=level == 'routine'))
     return dict(stages=SICK_STAGES, stage=2, headline=headline, why=why, cost=_sick_cost(m, profile, level),
                 do_now=dict(text=do_text, script=script, gloss=gloss), unknown=unknown, then=then,
                 clinics=[_clinic(_UHCS)] if nushp and level in ('same_day', 'soon') else [], calls=[], links=links,
@@ -543,7 +543,7 @@ def follow(m, profile, f, reports):
     questions = [T(f'化验单把「{x["name"]}」标为 {x["flag"]}：这对我意味着什么？需要做什么吗？', f'My report marks {x["name"]} as {x["flag"]}: what does that mean for me, and is anything needed?') for x in flagged[:3]]
     actions = [edit]
     if cov in ('not_sure', 'choosing'):
-        actions.insert(0, dict(id='go-insurance', label=T('弄懂我的保险', 'Figure out my insurance'), primary=False))
+        actions.insert(0, dict(id='go-insurance', label=T('我的保险：福利与费用', 'My insurance: benefits & costs'), primary=False))
     actions.append(dict(id='record-visit', label=T('记录这次就诊', 'Record the visit'), primary=False))
     return dict(stages=FOLLOW_STAGES, stage=2, headline=headline, why=why, cost=cost,
                 do_now=dict(text=T(f'打给{who_zh}，说这段话。', f'Call {who_en} and say this.'), script=script,

@@ -4,7 +4,7 @@ from .navigation import text
 
 KINDS = {'general': '一起理清下一步 / Help me get started',
          'first_visit': '我刚来，先安顿好 / I’m new here — set me up', 'concern': '现在不舒服，该去哪 / Something’s wrong — where do I go?',
-         'follow_up': '医生让我做件事，或拿到了结果 / A clinician told me to do something, or I got results', 'insurance': '弄懂我的保险 / Figure out my insurance',
+         'follow_up': '医生让我做件事，或拿到了结果 / A clinician told me to do something, or I got results', 'insurance': '我的保险：福利与费用 / My insurance: benefits & costs',
          'report': '我想讨论检查结果 / Discuss test results'}
 
 

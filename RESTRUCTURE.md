@@ -67,7 +67,7 @@
 - **阶段**：你手里有什么 → 它说了什么（只事实）→ 问谁、问什么 → 记录结果
 - **复用**：`reports`/lab PDF 解析、`health.py` 随访与续药、`journeys.preparation_sections`
 
-### D. 弄懂我的保险 · *"Figure out my insurance"*
+### D. 我的保险：福利与费用 · *"My insurance: benefits & costs"*
 
 - **谁**：刚收到 NUSHP 账单 / waiver 截止提醒，或者没保险、在比较计划，还没有具体看病需求。
 - **问题**：① 你现在的情况：有保险 / 没有 / 不确定 / 在选 ② 有保险：计划名，可选上传 SBC ③ 在选：一年大概需要哪些医疗（`suggested_needs` 预填）。
@@ -89,7 +89,7 @@ What's going on?
   [ I'm new here — set me up ]
   [ Something's wrong — where do I go? ]
   [ A clinician told me to… / I got results ]
-  [ Figure out my insurance ]
+  [ My insurance: benefits & costs ]
 
   or tell us in your words: [__________________] [Go]
 

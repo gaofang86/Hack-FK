@@ -10,7 +10,7 @@ function fixture(supported=false){
 test('homepage presents four entries in the person\'s words, one text box and nothing else up front',()=>{
  const html=fixture().composer();const order=['first_visit','concern','follow_up','insurance'].map(k=>html.indexOf(`data-start-kind="${k}"`));
  assert.ok(order.every(i=>i>0));assert.deepEqual([...order].sort((a,b)=>a-b),order);assert.ok(!html.includes('data-start-kind="report"'));
- assert.ok(html.includes('I’m new here — set me up')&&html.includes('Figure out my insurance'));
+ assert.ok(html.includes('I’m new here — set me up')&&html.includes('My insurance: benefits &amp; costs'));
  assert.ok(!html.includes('By doctor or clinic')&&!html.includes('goal-ghost')&&!html.includes('Stay healthy'));
  assert.ok(html.includes('继续已保存的任务'));assert.ok(!html.includes('dictation-button'));assert.ok(!html.includes('type="file"'));
 });
