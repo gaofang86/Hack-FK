@@ -232,7 +232,8 @@ def confirmation_tasks(person, provider, cash=None, insured=None):
     if person["service"] not in provider.get("services", []):
         tasks.append({"key": "service", "question": "Does this location offer the requested service for adults?"})
     if not provider.get("demo"):
-        tasks.append({"key": "availability", "question": "Is the selected clinician accepting new adult patients, and what appointments can you confirm?"})
+        tasks.append({"key": "availability", "question": "Is the selected clinician accepting new adult patients, and what appointments can you confirm?" if person["service"] != "follow_up"
+                      else "Am I already a patient here? If not, is the selected clinician accepting new adult patients? What follow-up appointments can you confirm?"})
     if cash["amount"] is None:
         tasks.append({"key": "cash", "question": "What is the complete self-pay price for this visit, including facility and professional fees? Can I get a written estimate?"})
     if person["insurance"] == "yes" and insured["amount"] is None:

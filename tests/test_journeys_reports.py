@@ -3,6 +3,7 @@ import base64
 from copy import deepcopy
 from datetime import date
 import io
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -128,3 +129,38 @@ class CoveragePreparationTests(unittest.TestCase):
             self.assertFalse(re.search(r'[\u3400-\u9fff]', sec['title'] + ''.join(i for i in sec['items'] if 'SYNTHETIC' not in i)))
         self.assertTrue(all(re.search(r'[\u3400-\u9fff]', sec['title']) for sec in zh))
         self.assertEqual(en[0]['items'][0], '我有学生保险 SYNTHETIC')
+
+
+class ScenarioConsistencyTests(JourneyTests):
+    """The call script and wizard hints must match what the user already said."""
+    def script(self, kind='follow_up', goal='SYNTHETIC goal', **changes):
+        j = self.post('/api/journeys', kind=kind, goal=goal)
+        raw = health_first(**changes); raw['demo'] = False
+        preview = self.post('/api/preview', **raw, journey_id=j['id'])
+        case = self.post('/api/search', token=preview['token'], approved=True, live=False)
+        return j, case, self.post('/api/case/preparation', id=case['id'])
+
+    def test_insured_without_plan_name_is_not_asked_only_for_self_pay(self):
+        _, _, prep = self.script(insurance='yes', plan={'name': '', 'rule': 'copay'})
+        self.assertIn('in-network for my plan', prep['text'])
+        self.assertNotIn('self-pay price', prep['text'].split('\n')[2])
+
+    def test_follow_up_script_does_not_assume_a_new_patient(self):
+        _, _, prep = self.script(service='follow_up', need='follow_up')
+        self.assertIn('Am I already a patient here?', prep['text'])
+        _, _, prep = self.script(service='primary_care')
+        self.assertIn('Are you accepting new adult patients', prep['text'])
+
+    def test_personal_note_is_offered_one_language_at_a_time(self):
+        _, _, prep = self.script()
+        self.assertFalse(re.search(r'[㐀-鿿]', prep['personal_note_view']['en']))
+        self.assertTrue(re.search(r'[㐀-鿿]', prep['personal_note_view']['zh']))
+
+    def test_goal_coverage_wording_is_exposed_for_every_task(self):
+        self.assertEqual(self.post('/api/journeys', kind='first_visit', goal='I do not have insurance')['coverage_situation'], 'uninsured')
+        self.assertEqual(self.post('/api/journeys', kind='concern', goal='I have student insurance')['coverage_situation'], 'insured')
+
+    def test_refill_is_not_told_checkups_may_be_free(self):
+        from app.scenarios import insured
+        self.assertNotIn('Checkups and screenings may be free', [t['title'] for t in insured({'service': 'primary_care', 'need': 'refill'})['tips']])
+        self.assertIn('Checkups and screenings may be free', [t['title'] for t in insured({'service': 'primary_care', 'need': 'checkup'})['tips']])

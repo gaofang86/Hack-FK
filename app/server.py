@@ -82,7 +82,7 @@ class App:
         profile = self.store.data.get('profile', {})
         sections = journeys.preparation_sections(case, attached, profile)
         return dict(case, reports=attached, safety_notice=notice if notice['level'] in ('emergency', 'same_day') else None, personal_preparation=journeys.preparation(case, attached, profile),
-                    preparation_view={lang: journeys.localized(sections, lang) for lang in ('en', 'zh')}, coverage_situation=journeys.coverage_situation(case, profile) if case.get('kind') == 'insurance' else None,
+                    preparation_view={lang: journeys.localized(sections, lang) for lang in ('en', 'zh')}, coverage_situation=journeys.coverage_situation(case, profile),
                     next_action=next_action(case, ranked(case)) if 'input' in case else journeys.next_step(case))
 
     def dispatch(self, method, path, body, query):
@@ -417,8 +417,11 @@ class App:
                     if provider is None:
                         raise ValueError("Provider not found")
                 lines = [f"Hello, I would like to arrange a {SERVICES[person['service']].lower()}.",
-                         "Are you accepting new adult patients at this location?",
-                         f"Can you confirm this provider, location and service are in-network for {plan_name}?" if person["insurance"] == "yes" and plan_name else "What is the complete self-pay price for this visit? Can I request a written estimate?",
+                         "Are you accepting new adult patients at this location?" if person["service"] != "follow_up"
+                         else "Am I already a patient here? If not, are you accepting new adult patients at this location?",
+                         (f"Can you confirm this provider, location and service are in-network for {plan_name}?" if plan_name
+                          else "Can you confirm this provider, location and service are in-network for my plan? I will read you the exact plan name from my card.")
+                         if person["insurance"] == "yes" else "What is the complete self-pay price for this visit? Can I request a written estimate?",
                          "Are facility charges, tests or other professional fees separate?",
                          "Do I need a referral or prior authorization? What appointments are available?",
                          f"Is {person['language']} language or interpreter support available, and is there a charge?"]
@@ -430,7 +433,9 @@ class App:
                 if body.get("use_model") is True:
                     result = self.model.bilingual_script(lines, person["language"], fallback)
                 if case.get('goal') or case.get('report_ids'):
-                    result['personal_note'] = self.journey_view(case)['personal_preparation']
+                    view = self.journey_view(case)
+                    result['personal_note'] = view['personal_preparation']
+                    result['personal_note_view'] = {lang: journeys.as_text(secs) for lang, secs in view['preparation_view'].items()}
                 case["preparation"] = dict(result, created=time.time(), draft=True, provider_id=provider["id"] if provider else None)
                 self.store.save()
                 return case["preparation"]

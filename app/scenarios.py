@@ -66,7 +66,7 @@ def insured(person):
              "source": _src("total_costs")},
             {"title": "Ask your plan about a nurse line or telehealth",
              "why": "Many plans include one. It can help you decide where to go, often at low or no cost."}]
-    if person.get("need") == "checkup" or service == "primary_care":
+    if person.get("need") == "checkup" or (service == "primary_care" and person.get("need") != "refill"):
         tips.insert(0, {"title": "Checkups and screenings may be free",
                         "why": "Many preventive services cost nothing at an in-network provider. Ask the clinic to bill it as preventive.",
                         "source": _src("preventive")})
