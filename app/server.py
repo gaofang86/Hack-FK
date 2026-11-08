@@ -18,6 +18,7 @@ from .egress import Egress, EgressBlocked, EgressError
 from .llm import LocalModel
 from .expect import expectations
 from .health import clean_profile, record_visit, view as health_view, stamp_sources
+from .health_overview import overview as health_overview
 from .scenarios import NEEDS, compare_plans, guidance, suggested_needs
 from .sbc import plan_for, read_upload, to_plan
 from .sources import describe_all
@@ -220,6 +221,28 @@ class App:
                 self.agent.clear()
                 self.store.save()
                 return self.state()
+            if path == "/api/health/overview" and method == "GET":
+                return health_overview(self.store.data["profile"], list(self.store.data.get("reports", {}).values()))
+            if path == "/api/health/reports/preview" and method == "POST":
+                # Same parser and review gate as a care task's report, but not attached to any task.
+                parsed = reports.parse_upload(body)
+                token = secrets.token_urlsafe(24)
+                self.report_previews = {k: v for k, v in self.report_previews.items() if time.time() - v['at'] < 600}
+                if len(self.report_previews) >= 10:
+                    self.report_previews.pop(next(iter(self.report_previews)))
+                self.report_previews[token] = dict(report=parsed, journey_id=None, at=time.time())
+                return dict(parsed, token=token, for_health=True)
+            if path == "/api/health/reports/confirm" and method == "POST":
+                preview = self.report_previews.get(body.get('token'))
+                if not preview or time.time() - preview['at'] > 600 or preview.get('journey_id') is not None:
+                    raise ValueError('Report preview expired; import and review it again')
+                if len(self.store.data.get('reports', {})) >= 20:
+                    raise ValueError('This vault supports up to 20 reports')
+                report = reports.reviewed(preview['report'], body, secrets.token_hex(8))
+                self.store.data.setdefault('reports', {})[report['id']] = report
+                self.report_previews.pop(body['token'])
+                self.store.save()
+                return health_overview(self.store.data["profile"], list(self.store.data['reports'].values()))
             if path == "/api/profile" and method == "GET":
                 return health_view(self.store.data["profile"])
             if path == "/api/profile" and method == "POST":
@@ -532,7 +555,7 @@ def make_handler(app):
                     return self.send(403, {"error": "Missing local application header"})
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
-                    limit = 8_500_000 if parsed.path in ("/api/plan/sbc", "/api/reports/preview") else 100000
+                    limit = 8_500_000 if parsed.path in ("/api/plan/sbc", "/api/reports/preview", "/api/health/reports/preview") else 100000
                     if not 0 <= length <= limit:
                         return self.send(413, {"error": "Request is too large"})
                     self.connection.settimeout(10)

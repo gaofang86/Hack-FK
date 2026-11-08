@@ -57,7 +57,7 @@ async function restorePage(id) {
   if(S.busy){queuedRoute=id;return;}
   await work(async()=>{
     S.state=await api('/api/state');
-    if(!S.state.unlocked){S.view='gate';S.current=null;S.health=null;closeDialog();render();return;}
+    if(!S.state.unlocked){S.view='gate';S.current=null;S.health=null;S.overview=null;closeDialog();render();return;}
     const data=trail.restore(id);
     if(!data){S.view='home';S.expect=null;S.current=null;S.health=await api('/api/profile');render();return;}
     let current=null;
@@ -66,7 +66,7 @@ async function restorePage(id) {
       catch{S.view='home';S.expect=null;S.current=null;S.health=await api('/api/profile');render();toast('这条任务已不可用。 / This journey is no longer available.');return;}
     }
     for(const k of ['view','step','sub','input','draft','visit','plans','sbc','expect','found','safety','preparingProvider','journey','reportDraft','activeJourney','homeGoal','homeKind','profileFocus'])S[k]=data[k];
-    S.current=current;S.preview=null;S.open=new Set(data.open);S.health=await api('/api/profile');
+    S.current=current;S.preview=null;S.open=new Set(data.open);S.health=await api('/api/profile');S.overview=null;
     if(S.found?.id)S.found=await api('/api/case?id='+encodeURIComponent(S.found.id));
     if(S.journey?.id)S.journey=await api('/api/journey?id='+encodeURIComponent(S.journey.id));
     closeDialog();render();
@@ -87,7 +87,7 @@ async function api(path, body) {
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 423 && S.state.unlocked) {
-      S.state.unlocked = false; S.current = null; S.input = fresh(); S.safety = null; S.expect = null; S.found = null; S.sub = 'symptoms'; S.view = 'gate'; S.health = null; S.journey=null;S.reportDraft=null;S.homeGoal='';S.activeJourney=null;dictation.abort(); S.step = 0; S.preview = null; closeDialog(); render();
+      S.state.unlocked = false; S.current = null; S.input = fresh(); S.safety = null; S.expect = null; S.found = null; S.sub = 'symptoms'; S.view = 'gate'; S.health = null; S.overview = null; S.journey=null;S.reportDraft=null;S.homeGoal='';S.activeJourney=null;dictation.abort(); S.step = 0; S.preview = null; closeDialog(); render();
     }
     throw new Error(data.error || 'Something went wrong. Please try again.');
   }
@@ -421,7 +421,7 @@ function bindLabFile(j){
 function renderReportReview(){
  const draft=S.reportDraft;
  $('#app').innerHTML=`<div class="home"><p class="eyebrow">ON THIS DEVICE · REVIEW BEFORE SAVING</p><h1 class="home-title">先核对原文 / Check what we read</h1><p class="lede">仅提取报告事实。可以修正或忽略；确认前不会存入档案，也不会用报告推断诊断或安排复查。</p><form id="report-review">${field('资料名称 / Label','label',draft.label,'text','required maxlength="160"')}${draft.rows.map((r,i)=>`<section class="sub-card"><label class="checkline"><input type="checkbox" name="keep_${i}" checked><span>保留第 ${i+1} 项 / Keep result</span></label><div class="form-grid">${field('项目 / Test','name_'+i,r.name,'text','required maxlength="160"')}${field('结果和单位 / Result and unit','result_'+i,r.result,'text','required maxlength="160"')}${field('原文参考范围 / Reported reference','reference_'+i,r.reference,'text','maxlength="160"')}${select('原文标记 / Reported flag','flag_'+i,[['','无标记 / None'],['Low','Low'],['High','High']],r.flag)}</div><details><summary>原文依据 / Source text</summary><pre class="report-evidence">${esc(r.evidence)}</pre></details></section>`).join('')}<div class="form-actions"><button type="button" class="text-button" data-action="page-back">← 返回 / Back</button><button class="primary">我已核对，保存 / Confirm and save</button></div></form></div>`;
- $('#report-review').addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target);const rows=draft.rows.map((r,i)=>({omit:!f.has('keep_'+i),name:f.get('name_'+i),result:f.get('result_'+i),reference:f.get('reference_'+i),flag:f.get('flag_'+i)}));work(async()=>{S.journey=await api('/api/reports/confirm',{token:draft.token,confirmed:true,label:f.get('label'),rows});S.reportDraft=null;trail.clear();S.view='journey';render();});});
+ $('#report-review').addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target);const rows=draft.rows.map((r,i)=>({omit:!f.has('keep_'+i),name:f.get('name_'+i),result:f.get('result_'+i),reference:f.get('reference_'+i),flag:f.get('flag_'+i)}));work(async()=>{const body={token:draft.token,confirmed:true,label:f.get('label'),rows};if(draft.for_health){S.overview=await api('/api/health/reports/confirm',body);S.reportDraft=null;trail.clear();S.view='health';render();window.scrollTo(0,0);return;}S.journey=await api('/api/reports/confirm',body);S.reportDraft=null;trail.clear();S.view='journey';render();});});
 }
 const prepSections=()=>(S.journey.preparation_view||{})[I18n.locale==='zh'?'zh':'en'];
 const prepText=()=>{const secs=prepSections();return secs?secs.map(x=>x.title+':\n'+x.items.map(i=>'- '+i).join('\n')).join('\n\n'):S.journey.personal_preparation;};
@@ -442,26 +442,50 @@ function renderHome(){
   $('#app').innerHTML=`<div class="home">${meChips()}${homeComposer()}${last?`<section class="continue-line"><p class="eyebrow">继续 / CONTINUE</p><button type="button" class="continue-row" data-case="${esc(last.id)}"><strong>${caseLabel(last)}</strong><span>${esc(last.next_action||'')}</span></button>${open.length>1?`<button type="button" class="text-button" data-action="saved">全部任务 / All tasks (${open.length})</button>`:''}</section>`:''}${S.state.preview_mode?'<p class="preview-banner"><span>临时预览 / Temporary preview</span> · <button type="button" class="text-button" data-action="neu-example">试试 NEU 学生示例 / Try as: NEU student, insured</button></p>':''}<p class="home-links"><button type="button" class="text-button" data-action="home-page">我的健康档案 / My health →</button></p></div>`;
   bindHome();
 }
+const COVERAGE_LABEL={insured:'有保险 / Insured',uninsured:'目前没有保险 / No insurance right now',choosing:'正在选保险 / Choosing a plan',not_sure:'还没回答 / Not answered yet'};
+function healthFlagRow(f){
+  return `<div class="flag-row"><div class="flag-quote" data-i18n-keep><strong>${esc(f.name)}</strong> <span>${esc(f.result)}</span> <span class="muted">reference ${esc(f.reference||'not given')}</span> <span class="flag-chip">${esc(f.flag)}</span></div><p class="flag-note"><span>${esc(f.note)}</span> ·<span data-i18n-keep>${esc(f.report)}${f.reviewed_on?` · ${esc(f.reviewed_on)}`:''}</span></p><p class="flag-ask"><span>可以问医生 / Ask a clinician</span> <q>${esc(f.ask)}</q></p></div>`;
+}
+function healthOverview(o){
+  const v=o.overview, list=arr=>arr.length?arr.map(t=>`<span class="tag">${esc(t)}</span>`).join(''):'<span class="muted">None added</span>';
+  return `<section class="form-card health-section"><div class="form-card-head row"><h3><span class="sec-num">1</span><span>概况 / Overview</span></h3><button type="button" class="text-button" data-action="edit-profile">Edit</button></div><p class="hint">你填写或核对过的事实。 / Facts you entered or reviewed.</p>
+    <div class="facts"><div><span>Age</span><strong>${v.age??'—'}</strong></div><div><span>Language</span><strong>${esc(v.language)}</strong></div><div><span>Coverage</span><strong>${v.coverage==='insured'&&v.plan?esc(v.plan):esc(COVERAGE_LABEL[v.coverage]||COVERAGE_LABEL.not_sure)}</strong></div></div>
+    <div class="fact-list"><span>Conditions</span><div>${list(v.conditions)}</div></div>
+    <div class="fact-list"><span>Medications</span><div>${list(v.medications)}</div></div>
+    <div class="fact-list"><span>Allergies</span><div>${list(v.allergies)}</div></div>
+    <div class="fact-list"><span>Follow-ups</span><div>${list(v.follow_ups.map(f=>f.what+(f.due?` · ${f.due}`:'')))}</div></div>
+    <div class="sub-card"><p class="sub-title">已核对的检验报告 / Reviewed lab reports</p>${v.reports.length?v.reports.map(r=>`<div class="report-line"><div><strong data-i18n-keep>${esc(r.label)}</strong><p><span>${r.rows} 项 / ${r.rows} rows</span> · <span>${r.flagged} 项有报告标记 / ${r.flagged} flagged by the report</span>${r.reviewed_on?` · <span data-i18n-keep>${esc(r.reviewed_on)}</span>`:''}</p></div><button type="button" class="text-button" data-forget-health-report="${esc(r.id)}">Forget</button></div>`).join(''):'<p class="hint">还没有报告。报告是可选的。 / No reports yet. Reports are optional.</p>'}
+      <label class="secondary small file-button">＋添加检验报告 PDF / Add a lab report (PDF)<input type="file" id="health-lab-file" accept="application/pdf" hidden></label><p class="hint">支持文本型 PDF；逐项核对后才保存，原 PDF 不留存。 / Text PDFs only. Nothing is saved until you review each row; the original PDF is not kept.</p></div>
+    <div class="sub-card"><div class="form-card-head row"><p class="sub-title">就诊记录 / Visits</p><button type="button" class="text-button" data-action="record-visit">+ Record a visit</button></div>${v.last_visit?`<p><span class="visit-date">${esc(v.last_visit.date)}</span> <strong data-i18n-keep>${esc(v.last_visit.reason)}</strong>${v.visits>1?` · <span>共 ${v.visits} 次 / ${v.visits} visits</span>`:''}</p>`:'<p class="hint">After a visit, record what happened. New medicines and follow-ups become your next to-dos.</p>'}</div></section>`;
+}
+function healthAttention(o){
+  const a=o.attention, none=!a.report_flags.length&&!a.due.length&&!a.preventive.length;
+  return `<section class="form-card health-section"><div class="form-card-head"><h3><span class="sec-num">2</span><span>需要留意 / Needs attention</span></h3><p>只列报告自带的标记、到期事项和有来源的年龄筛查；不是诊断。 / Only flags printed on your reports, items that are due, and sourced age-based checks. Not a diagnosis.</p></div>
+    ${a.report_flags.length?`<p class="sub-title">报告中被标记的项目 / Rows your report flagged</p>${a.report_flags.map(healthFlagRow).join('')}`:''}
+    ${a.due.length?`<p class="sub-title">到期的续药和复诊 / Refills and follow-ups due</p>${a.due.map(todoRow).join('')}`:''}
+    ${a.preventive.length?`<p class="sub-title">对应年龄的检查与疫苗 / Checkups and vaccines for your age</p>${a.preventive.map(todoRow).join('')}`:a.needs_birth_year?'<p class="hint">Add your birth year to see checkups and vaccines for your age.</p>':''}
+    ${none&&!a.needs_birth_year?'<p class="hint">按你目前的记录，没有需要留意的事项。 / Nothing needs attention from what’s on file.</p>':''}
+    ${a.done.length?`<details class="private-details"><summary>已完成 / Done (${a.done.length})</summary>${a.done.map(todoRow).join('')}</details>`:''}</section>`;
+}
+function healthPlanDirection(o){
+  const d=o.plan_direction, src=x=>x.source?` · <a href="${esc(x.source.url)}" target="_blank" rel="noopener noreferrer">${esc(x.source.title)}</a>`:'';
+  return `<section class="form-card health-section"><div class="form-card-head"><h3><span class="sec-num">3</span><span>选保险的方向 / Plan direction</span></h3><p>${esc(d.note)}</p></div>
+    <p class="sub-title">今年预计会用到的医疗 / Care you may use this year</p><div class="expected-use">${d.expected_use.map(u=>`<details class="use-row"><summary><span>${esc(u.label)}</span><strong>× ${u.count}</strong></summary><ul>${u.basis.map(b=>`<li>${esc(b)}</li>`).join('')}</ul></details>`).join('')}</div>
+    ${d.has_sbc?`<p class="sub-title">你的计划（来自已核对的 SBC） / Your plan, from your reviewed SBC</p>${d.current_plan.map(c=>`<div class="known-row"><span>${esc(c.label)}</span><strong>${esc(c.value)}</strong></div>`).join('')}`:d.coverage==='insured'?'<p class="hint">上传计划的 SBC 后，这里会显示每项你要付多少；未知的不按 0 计算。 / Add your plan’s SBC to see your share for each; unknown amounts are never $0.</p>':''}
+    <p class="sub-title">选计划时看这些 / What to look for in a plan</p>${d.look_for.map(t=>`<div class="choice-tip"><strong>${esc(t.title)}</strong><p>${esc(t.why)}${src(t)}</p></div>`).join('')}
+    ${d.choices.length?`<details class="private-details"><summary>省钱的其他方式 / Other ways to pay less</summary>${d.choices.map(c=>`<div class="choice-tip"><strong>${esc(c.title)}</strong><p>${esc(c.why)}${src(c)}</p></div>`).join('')}</details>`:''}
+    <div class="form-actions"><button type="button" class="text-button" data-action="health-insurance">弄懂我的保险 / Figure out my insurance</button><button type="button" class="primary" data-action="health-compare-plans">按这些需求比较计划 / Compare plans on these needs ${icon('arrow')}</button></div></section>`;
+}
 function renderHealth(){
-  const h=S.health, p=h.profile, open=h.todos.filter(t=>!t.done_on), personal=open.filter(t=>['refill','follow_up'].includes(t.kind)), prevent=open.filter(t=>!['refill','follow_up'].includes(t.kind)), done=h.todos.filter(t=>t.done_on);
-  const list=(arr)=>arr.length?arr.map(t=>`<span class="tag">${esc(t)}</span>`).join(''):'<span class="muted">None added</span>';
-  $('#app').innerHTML=`<div class="home">
-  <p class="eyebrow">MY HEALTH</p>${meChips()}<section class="form-card"><div class="form-card-head"><h3>Continue your care</h3><p>Saved tasks and the next action.</p></div>${(S.state.cases||[]).filter(c=>c.status!=='attended').length?(S.state.cases||[]).filter(c=>c.status!=='attended').map(c=>`<div class="visit-row"><div><strong>${caseLabel(c)}${c.city?` · <span data-i18n-keep>${esc(c.city)}</span>`:''}${c.demo?' · <span>Fictional demo</span>':''}</strong><p>${esc(c.next_action||'Review your next step')}</p><button class="text-button" data-case="${esc(c.id)}">Continue journey →</button></div></div>`).join(''):'<p class="hint">No unfinished care journeys.</p>'}</section>
+  const o=S.overview;
+  if(!o){$('#app').innerHTML='<div class="home"><p class="lede">Loading…</p></div>';api('/api/health/overview').then(x=>{S.overview=x;if(S.view==='health')render();}).catch(e=>toast(e.message));return;}
+  $('#app').innerHTML=`<div class="home"><p class="eyebrow">MY HEALTH</p>${meChips()}<h1 class="home-title">我的健康概况 / My health at a glance</h1><p class="lede">${esc(o.scope)}</p>
   ${S.state.preview_mode?`<details class="example-drawer"><summary>先看看示例 / Explore an example</summary><p>Fictional student inputs with real clinic sources. This does not change your profile.</p><button type="button" class="secondary small" data-action="neu-example">Explore NEU / 02445</button></details>`:''}
-  ${!S.state.profile_ready?'<details class="optional-profile"><summary>可选：补充可复用的健康信息 / Optional health profile</summary>':''}<div class="home-grid">
-    <section class="form-card"><div class="form-card-head row"><h3>Your health</h3><button type="button" class="text-button" data-action="edit-profile">Edit</button></div>
-      <div class="facts"><div><span>Age</span><strong>${h.age??'—'}</strong></div><div><span>Language</span><strong>${esc(p.language||'English')}</strong></div><div><span>Coverage</span><strong>${p.insurance==='yes'?esc(p.plan?.name||'Insured'):p.insurance==='no'?(p.wants_insurance?'Choosing a plan':'No insurance right now'):'Not answered yet'}</strong></div></div>
-      <div class="fact-list"><span>Conditions</span><div>${list(p.conditions||[])}</div></div>
-      <div class="fact-list"><span>Medications</span><div>${list(p.medications||[])}</div></div>
-      <div class="fact-list"><span>Allergies</span><div>${list(p.allergies||[])}</div></div>
-      <div class="fact-list"><span>Follow-ups</span><div>${list((p.follow_ups||[]).map(f=>f.what+(f.due?` · ${f.due}`:'')))}</div></div></section>
-    <section class="form-card"><div class="form-card-head"><h3>Your to-dos</h3><p>From your profile and official guidance. Ask a clinician what fits you.</p></div>
-      ${personal.length?`<p class="sub-title">For you</p>${personal.map(todoRow).join('')}`:''}
-      ${prevent.length?`<p class="sub-title">Checkups and vaccines for your age</p>${prevent.map(todoRow).join('')}`:'<p class="hint">Add your birth year to see checkups and vaccines for your age.</p>'}
-      ${done.length?`<details class="private-details"><summary>Done (${done.length})</summary>${done.map(todoRow).join('')}</details>`:''}</section>
-    <section class="form-card"><div class="form-card-head row"><h3>Your visits</h3><button type="button" class="text-button" data-action="record-visit">+ Record a visit</button></div>${(p.visits||[]).length?(p.visits||[]).slice(0,5).map(v=>`<div class="visit-row"><span class="visit-date">${esc(v.date)}</span><div><strong data-i18n-keep>${esc(v.reason)}</strong><p>${esc(v.place||'Place not recorded')}${(v.added?.medications||[]).length||(v.added?.follow_ups||[]).length?` · added ${[...(v.added.medications||[]),...(v.added.follow_ups||[])].map(esc).join(', ')}`:''}</p></div></div>`).join(''):'<p class="hint">After a visit, record what happened. New medicines and follow-ups become your next to-dos.</p>'}</section>
-    <section class="form-card"><div class="form-card-head row"><h3>Better choices</h3>${p.insurance==='no'?'<button type="button" class="text-button" data-action="plans">Compare plans →</button>':''}</div>${h.choices.map(c=>`<div class="choice-tip"><strong>${esc(c.title)}</strong><p>${esc(c.why)}${c.source?` · <a href="${esc(c.source.url)}" target="_blank" rel="noopener noreferrer">${esc(c.source.title)}</a>`:''}</p></div>`).join('')}</section>
-  </div>${!S.state.profile_ready?'</details>':''}</div>`;
+  <div class="health-sections">${healthOverview(o)}${healthAttention(o)}${healthPlanDirection(o)}</div></div>`;
+  bindHealthLabFile();
+}
+function bindHealthLabFile(){
+  $('#health-lab-file')?.addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;if(file.size>6e6)return toast('PDF 最大 6 MB / Max 6 MB.');const reader=new FileReader();reader.onload=()=>work(async()=>{S.reportDraft=await api('/api/health/reports/preview',{pdf_base64:String(reader.result).split(',')[1],file_name:file.name});S.view='report-review';render();});reader.readAsDataURL(file);});
 }
 function listRows(kind,rows){
   const [a,b,la,lb,ta]=kind==='med'?['name','refill_by','Medication','Runs out (optional)','text']:['what','due','What','Due (optional)','text'];
@@ -731,9 +755,9 @@ function readPlans(){
   Object.keys(S.plans.needs).forEach(k=>{if(f.elements[`need_${k}`])S.plans.needs[k]=Number(g(`need_${k}`))||1;});
   S.plans.plans=S.plans.plans.map((pl,i)=>{const costs={...pl.costs};Object.keys(S.plans.needs).forEach(k=>{if(f.elements[`p${i}_${k}_status`])costs[k]={status:g(`p${i}_${k}_status`),cost:g(`p${i}_${k}_cost`)};});return {name:g(`p${i}_name`),premium:g(`p${i}_premium`),oop_max:g(`p${i}_oop`),costs};});
 }
-async function openPlans(){
+async function openPlans(fromHealth=null){
   const d=await api('/api/plans'), saved=d.saved;
-  S.plans={catalog:d.needs,needs:saved?.needs||d.suggested,plans:saved?.plans?.length?saved.plans:[{name:'',premium:'',oop_max:'',costs:{}},{name:'',premium:'',oop_max:'',costs:{}}],result:d.result};
+  S.plans={catalog:d.needs,needs:(fromHealth&&Object.keys(fromHealth).length?{...fromHealth}:null)||saved?.needs||d.suggested,plans:saved?.plans?.length?saved.plans:[{name:'',premium:'',oop_max:'',costs:{}},{name:'',premium:'',oop_max:'',costs:{}}],result:d.result};
   S.view='plans'; render(); window.scrollTo(0,0);
 }
 async function calcPlans(){
@@ -884,7 +908,8 @@ document.addEventListener('click',event=>{
   if(target.dataset.copy){const t=$('#'+target.dataset.copy)?.innerText;return work(async()=>{await navigator.clipboard.writeText(t);toast('Copied.');});}
   if(target.dataset.pins){readDraft();S.draft.insurance=target.dataset.pins;renderProfile();return;}
   if(target.dataset.addRow){const visit=S.view==='visit';visit?readVisit():readDraft();const tgt=visit?S.visit:S.draft;(target.dataset.addRow==='med'?tgt.meds:tgt.fus).push(target.dataset.addRow==='med'?{name:'',refill_by:''}:{what:'',due:''});visit?renderVisit():renderProfile();return;}
-  if(target.dataset.todo){const t=S.health.todos.find(x=>x.id===target.dataset.todo);return work(async()=>{S.health=await api('/api/profile/todo',{id:t.id,done:!t.done_on});render();});}
+  if(target.dataset.todo){const t=S.health.todos.find(x=>x.id===target.dataset.todo);return work(async()=>{S.health=await api('/api/profile/todo',{id:t.id,done:!t.done_on});if(S.view==='health')S.overview=await api('/api/health/overview');render();});}
+  if(target.dataset.forgetHealthReport){if(!confirm('Forget this report? This can’t be undone.'))return;return work(async()=>{S.state=await api('/api/reports/forget',{report_id:target.dataset.forgetHealthReport});S.overview=await api('/api/health/overview');render();});}
   if(target.dataset.forget){const f=target.dataset.forget;if(f==='everything'&&!confirm('Forget your whole profile and all saved care journeys? This can’t be undone.'))return;return work(async()=>{S.health=await api('/api/profile/forget',{field:f,value:target.dataset.value||''});trail.clear();S.state=await api('/api/state');if(f==='everything'){S.journey=null;S.reportDraft=null;S.homeGoal='';S.activeJourney=null;S.current=null;S.found=null;editProfile();return;}render();});}
   if(target.dataset.sign){S.input.no_signs=false;const id=target.dataset.sign;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks.filter(x=>S.choices.some(c=>c.id===x&&lvl(c)==='emergency')),id];
     return work(async()=>{S.safety=await api('/api/safety',{checks:S.input.checks});render();$('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'});});}
@@ -916,7 +941,9 @@ document.addEventListener('click',event=>{
   if(action==='back'){collect();S.step--;S.preview=null;render();return;}
   if((action==='home'||action==='new')&&S.state.unlocked){S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.current=null;S.preview=null;S.view='home';return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
   if(action==='home'||action==='new'){S.input=fresh();S.input.visit_date=S.state.today||today();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.step=0;S.current=null;S.preview=null;render();return;}
-  if(action==='home-page'){if(!S.state.unlocked){S.view=S.state.vault_exists?'gate':'home';render();return;}S.view='health';S.expect=null;S.current=null;return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
+  if(action==='home-page'){if(!S.state.unlocked){S.view=S.state.vault_exists?'gate':'home';render();return;}S.view='health';S.expect=null;S.current=null;return work(async()=>{[S.health,S.state,S.overview]=await Promise.all([api('/api/profile'),api('/api/state'),api('/api/health/overview')]);render();window.scrollTo(0,0);});}
+  if(action==='health-compare-plans')return work(()=>openPlans(S.overview?.plan_direction?.needs));
+  if(action==='health-insurance')return openOrStart('insurance');
   if(action==='edit-profile')return editProfile();
   if(action==='edit-coverage')return editProfile('coverage');
   if(action==='edit-me')return editMe();
@@ -933,7 +960,7 @@ document.addEventListener('click',event=>{
   if(action==='add-plan'){readPlans();S.plans.plans.push({name:'',premium:'',oop_max:'',costs:{}});renderPlans();return;}
   if(action==='record-visit'){if(S.view==='home')S.current=null;return work(async()=>{if(!S.health)S.health=await api('/api/profile');recordVisit();});}
   if(action==='back-to-results'){S.visit=null;S.view='wizard';render();return;}
-  if(action==='start-over'){if(!confirm('Erase the saved health profile on this computer and start a new one? This can’t be undone.'))return;return work(async()=>{S.state=await api('/api/vault/reset',{confirm:'erase'});trail.clear();S.health=null;S.state.profile_ready=false;editProfile();});}
+  if(action==='start-over'){if(!confirm('Erase the saved health profile on this computer and start a new one? This can’t be undone.'))return;return work(async()=>{S.state=await api('/api/vault/reset',{confirm:'erase'});trail.clear();S.health=null;S.overview=null;S.state.profile_ready=false;editProfile();});}
   if(action==='known'){S.view='known';return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
   if(action==='planned-care'){collect();S.sub='need';S.input.feel='okay';S.input.need='';S.preview=null;render();return;}
   if(action==='care-today')return advance();
@@ -967,7 +994,7 @@ document.addEventListener('click',event=>{
   if(action==='privacy')return work(privacyDialog);
   if(action==='privacy-probe')return work(async()=>{const r=await api('/api/privacy/probe',{});await privacyDialog();toast((r.blocked?'Blocked as expected: ':'Self-check failed: ')+r.reason);});
   if(action==='offline')return work(async()=>{S.state=await api('/api/offline',{offline:!S.state.offline});await privacyDialog();});
-  if(action==='lock')return work(async()=>{S.state=await api('/api/vault/lock',{});S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.current=null;S.step=0;S.preview=null;S.health=null;S.journey=null;S.reportDraft=null;S.homeGoal='';S.activeJourney=null;S.view='gate';dictation.abort();closeDialog();render();toast('Vault locked. Private information cleared from this page.');});
+  if(action==='lock')return work(async()=>{S.state=await api('/api/vault/lock',{});S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.current=null;S.step=0;S.preview=null;S.health=null;S.overview=null;S.journey=null;S.reportDraft=null;S.homeGoal='';S.activeJourney=null;S.view='gate';dictation.abort();closeDialog();render();toast('Vault locked. Private information cleared from this page.');});
   if(action==='model-prep')return work(async()=>{if($('#prep-output'))$('#prep-output').textContent='Preparing a draft with your local model…';showPrep(await api('/api/case/preparation',{id:S.current.id,provider_id:S.preparingProvider,use_model:true}));});
   if(action==='copy-prep')return work(async()=>{const script=$('#script-text')?.textContent;if(!script)throw Error('Prepare a script first.');await navigator.clipboard.writeText(script);toast('Copied. You control where you share it.');});
 });
@@ -979,4 +1006,4 @@ async function init(){try{S.state=await api('/api/state');S.input.visit_date=S.s
 }catch(e){toast(e.message);S.view='gate';}render();}
 I18n.init();
 init();
-setInterval(async()=>{if(S.busy||!S.state.unlocked)return;try{const state=await api('/api/state');if(!state.unlocked){S.state=state;S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.current=null;S.step=0;S.preview=null;S.health=null;S.journey=null;S.reportDraft=null;S.homeGoal='';S.activeJourney=null;S.view='gate';dictation.abort();closeDialog();render();toast('Your vault locked after inactivity. Unlock to resume your saved journey.');}}catch{}},30000);
+setInterval(async()=>{if(S.busy||!S.state.unlocked)return;try{const state=await api('/api/state');if(!state.unlocked){S.state=state;S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.current=null;S.step=0;S.preview=null;S.health=null;S.overview=null;S.journey=null;S.reportDraft=null;S.homeGoal='';S.activeJourney=null;S.view='gate';dictation.abort();closeDialog();render();toast('Your vault locked after inactivity. Unlock to resume your saved journey.');}}catch{}},30000);
