@@ -11,8 +11,8 @@ from .journeys import coverage_situation
 FORBIDDEN = re.compile(r"diagnos|you (have|probably have) (a|an) |in[- ]network (is )?confirmed|guarantee|free of charge|"
                        r"out[- ]of[- ]pocket|exceed|not covered|(will|likely|probably) (need to )?pay|you('ll| will) owe|covered in full|"
                        r"not active|inactive|no (added )?benefits|does not include|"
-                       r"有效状态|plan is active|诊断|一定在网络内|保证|免费|超出|不在.*覆盖|覆盖范围|报销|需要自付|自己付|全额|未激活|没有.*福利|不包含", re.I)
-UNKNOWN_WORDS = re.compile(r"unknown|not known|don.t know|do not know|not sure yet|未知|还不知道|不确定|尚未确定|还没确定|不清楚", re.I)
+                       r"有效状态|plan is active|已经为您提供|基本的医疗保护|诊断|一定在网络内|保证|免费|超出|不在.*覆盖|覆盖范围|报销|需要自付|自己付|全额|未激活|没有.*福利|不包含", re.I)
+UNKNOWN_WORDS = re.compile(r"unknown|not known|don.t know|do not know|not sure yet|未知|无法确定|暂时无法|还不知道|不确定|尚未确定|还没确定|不清楚", re.I)
 
 NEXT_ZH = {'insured': '打保险卡背面的会员服务电话，问这位医生是否在网络内、看一次的 copay 是多少',
            'uninsured': '问诊所新病人看一次的自费价格，以及有没有经济援助',
