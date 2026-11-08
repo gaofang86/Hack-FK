@@ -37,10 +37,11 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual(self.app.get_case(self.case['id'])['providers'][-1]['url'], provider['url'])
 
     def test_invalid_or_duplicate_candidate_does_not_mutate(self):
+        before = len(self.app.get_case(self.case['id'])['providers'])
         for url in ('javascript:alert(1)', 'https://user:pass@example.org'):
             with self.assertRaises(ValueError):
                 self.candidate(url=url)
-        self.assertEqual(len(self.app.get_case(self.case['id'])['providers']), 2)
+        self.assertEqual(len(self.app.get_case(self.case['id'])['providers']), before)
         self.candidate()
         with self.assertRaises(ValueError):
             self.candidate()

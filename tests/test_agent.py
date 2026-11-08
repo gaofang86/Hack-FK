@@ -121,7 +121,7 @@ class AgentTests(unittest.TestCase):
     def test_language_answer_changes_fit_but_not_cost_priority_and_expires(self):
         case = self.app.get_case(self.case['id'])
         case['input'].update(language='Chinese', priority='balanced', insurance='no')
-        first, second = case['providers']
+        first, second = case['providers'][:2]
         for p in (first, second):
             p['services'] = [case['input']['service']]
             p['languages'] = []

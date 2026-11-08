@@ -30,7 +30,7 @@ class NeuScenarioTests(unittest.TestCase):
 
     def test_real_candidates_do_not_invent_plan_prices_or_network(self):
         self.assertEqual(self.case['input']['scenario'], 'neu_student')
-        self.assertEqual(len(self.case['results']), 2)
+        self.assertGreaterEqual(len(self.case['results']), 2)
         for row in self.case['results']:
             self.assertFalse(row['provider']['demo'])
             self.assertIsNone(row['cost']['amount'])

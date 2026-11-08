@@ -81,3 +81,19 @@ class DirectorySearchTests(unittest.TestCase):
         self.assertEqual(hits[0]['type'], 'clinician'); self.assertIn('1180 Beacon', hits[0]['address']); self.assertTrue(hits[0]['url'].startswith('https://'))
         self.assertTrue(any(h['id'] == 'bwh-brookline' for h in directory_search('brookline place')))
         self.assertEqual(directory_search('dr'), []); self.assertEqual(directory_search('zzzz nobody'), [])
+
+    def test_expanded_directory_is_sourced_and_honest(self):
+        from app.catalog import directory_search, REAL, BROOKLINE, CLINICIANS, candidates
+        self.assertTrue(any(h['id'] == 'bidmc-hca' for h in directory_search('Healthcare Associates')))
+        self.assertTrue(any(h['id'] == 'nu-uhcs' for h in directory_search('Northeastern')))
+        self.assertEqual(directory_search('Berz')[0]['type'], 'clinician')
+        ids = {p['id'] for p in REAL + BROOKLINE}
+        self.assertEqual(len(ids), len(REAL + BROOKLINE))
+        for e in REAL + BROOKLINE + CLINICIANS:
+            self.assertTrue(e['url'].startswith('https://'), e['id'])
+            self.assertTrue(e.get('booking_url', 'https://').startswith('https://'), e['id'])
+            self.assertRegex(e['source_note'], r'(?i)unconfirmed|confirm', e['id'])
+        for c in CLINICIANS:
+            self.assertIn(c['practice_id'], ids)
+        self.assertTrue(all(p['city'] == 'Brookline' for p in candidates('Brookline', 'MA')))
+        self.assertTrue(any(p['id'] == 'bmc-adult-pc' for p in candidates('Boston', 'MA')))
