@@ -77,7 +77,8 @@ def phrase_pattern(phrase):
     p = norm(phrase)
     if len(p) < 3:
         return None
-    return re.compile(rf"(?<![\w@]){re.escape(p).replace(r'\ ', r'\s+')}(?![\w@])", re.I)
+    escaped = re.escape(p).replace(r"\ ", r"\s+")
+    return re.compile(rf"(?<![\w@]){escaped}(?![\w@])", re.I)
 
 
 def snippet(text, start, end, width=90):

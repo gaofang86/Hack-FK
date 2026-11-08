@@ -4,7 +4,7 @@ Purpose: show a private, persistent care-navigation workflow. Target: roughly 4 
 
 ## Prepare
 
-Run `python3 run.py --preview` and open http://127.0.0.1:8767. Use fictional personal information only. This disposable preview has no search keys and does not idle-lock. Identify it on screen. Have the receiver and installation reports ready. Do not show `.env`, member IDs or real health records.
+Start Ollama with `qwen3.5:2b` pulled. Run `python3 run.py --preview` and open http://127.0.0.1:8767. Use fictional personal information only. This disposable preview has no search keys and does not idle-lock. Identify it on screen. Have the receiver and installation reports ready. Do not show `.env`, member IDs or real health records.
 
 ## 0:00–0:30 — Problem and promise
 
@@ -30,16 +30,16 @@ Choose **Record office reply** on the fictional extra candidate. Enter a clearly
 
 Use **Add quote / confirmation** only for a clearly labeled synthetic quote in this rehearsal, not as evidence from a real clinic. To show price reranking without mixing evidence, use the separate **Explore a fictional example** path. State the mode change out loud.
 
-Open **Prepare this visit** and show the selected provider's name, address and outstanding questions. The draft is a built-in template; no Ollama claim. Return home and continue the saved journey.
+Open **Prepare this visit** and show the selected provider's name, address and outstanding questions as a built-in template. Choose **Use my local model**: each English line now has a Chinese line under it, labeled `local model (qwen3.5:2b)`. Say that the model only translates fixed questions on this laptop; it never sees health history or changes costs. Return home and continue the saved journey.
 
 ## 2:50–3:30 — Privacy and offline operation
 
 Open **Privacy**, keep offline mode off for the first self-check, and choose **Run synthetic privacy self-check**. Show the DLP block and ledger. The phrase is made up and no network call is made by this self-check.
 
-Turn offline mode on. Reopen the saved journey and built-in preparation. Show the independent receiver report: public controlled search reached the receiver, sensitive URL/header/body attempts did not, redirects were not followed, offline requests were not received. Explain that this is controlled local observation, not OS-wide isolation or live API certification.
+Turn offline mode on, then **turn Wi-Fi off on camera** (show the menu bar). Reopen the saved journey and choose **Use my local model** again: it still works. Turn Wi-Fi back on afterwards. Show the independent receiver report: public controlled search reached the receiver, sensitive URL/header/body attempts did not, redirects were not followed, offline requests were not received. Explain that this is controlled local observation, not OS-wide isolation or live API certification.
 
 ## 3:30–4:00 — What exists and what remains
 
-“Local profiles, task continuity, candidate intake, dated confirmations and deterministic comparisons work. Real sources are separated from fictional demonstration data. Live search credentials and Ollama are pending integrations. Current-year NUSHP cost sharing, exact physician network and real appointment availability still need confirmation.”
+“Local profiles, task continuity, candidate intake, dated confirmations and deterministic comparisons work. Real sources are separated from fictional demonstration data. Exa and Tavily were tested with a synthetic public query, and the local model translates call scripts with Wi-Fi off. Current-year NUSHP cost sharing, exact physician network and real appointment availability still need confirmation.”
 
 Show user-test findings only after actual trials. Otherwise say user validation is pending. Do not claim completed bookings, savings, paying customers or clinical validation.

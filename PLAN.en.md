@@ -69,11 +69,11 @@ Retain local profiles, relevant refill/follow-up reminders, visit records and pr
 Test whether users can complete their next step before testing repeat use and willingness to pay. Universities and student insurers are potential distribution and buyer hypotheses. Local processing, inspectable cost scenarios and persistent tasks are a combination to validate, not proof that competitors or general assistants cannot provide it.
 
 
-## 9. Pending integrations and acceptance
+## 9. Integration goals and acceptance
 
-Both integrations remain future work. Complete the independent product workflow first.
+Current implementation and validation evidence belongs in [STATUS.md](STATUS.md). These criteria define the target evidence for the integrations.
 
-| Pending item | Goal | Completion criteria | Available fallback |
+| Integration | Goal | Acceptance criteria | Available fallback |
 |---|---|---|---|
 | Ollama local model | Produce reviewable preparation drafts, including Chinese, on-device | Install runtime/model; verify loopback calls, Chinese output, offline use and failure fallback; no changes to safety rules or cost math, no cloud fallback | Clearly labeled built-in templates |
 | Tavily / Exa search API | Discover public provider leads inside the app | Configure at least one API key in local `.env`, never version control; verify real NEU / 02445 results, disclosure preview, ledger, failures and offline handling | Sourced local directory, external lookup links and manual candidate entry |

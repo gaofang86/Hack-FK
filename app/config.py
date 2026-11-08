@@ -34,7 +34,7 @@ class Config:
 
         # Local model (Ollama) - must be on this machine
         self.ollama_url = _get("OLLAMA_URL", "http://127.0.0.1:11434")
-        self.ollama_model = _get("OLLAMA_MODEL", "qwen2.5:3b")
+        self.ollama_model = _get("OLLAMA_MODEL", "qwen3.5:2b")
 
         self.idle_lock_minutes = int(_get("IDLE_LOCK_MINUTES", "15"))
 

@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "synthetic_only": true,
+  "checked_at": "2026-11-08",
+  "scope": "Real local Ollama model called by the app in-process. Not a clinical review of draft content.",
+  "model": "qwen3.5:2b",
+  "loopback_only": true,
+  "non_loopback_endpoint_refused": true,
+  "chinese_characters_in_draft": 127,
+  "app_offline_mode_on": true,
+  "default_network_route_present": true,
+  "private_history_sent_to_model": false,
+  "comparison_unchanged_by_model": true,
+  "gateway_requests_during_draft": 0,
+  "unreachable_model_fell_back_to_labeled_template": true,
+  "draft_excerpt": "I am contacting Brigham and Women's Primary Care Associates of Brookline at 1 Brookline Place, Suite 225, Brookline, MA 02445 about a primary-care appointment.\n我联系的是位于布鲁克林的 Brigham and Women's Primary Care Associates，地址为 Brookline Place 1 号"
+}

@@ -1,10 +1,10 @@
 {
   "passed": true,
-  "checked_at_utc": "2026-11-08T05:22:46.974615+00:00",
+  "checked_at_utc": "2026-11-08T06:55:13.665101+00:00",
   "scope": "Fresh temporary source copy and virtual environment; no .env, patient vault, model or real API credentials copied.",
-  "python": "3.13.3",
-  "elapsed_seconds": 12.1,
-  "tests": "----------------------------------------------------------------------\nRan 88 tests in 6.427s\n\nOK",
+  "python": "3.11.16",
+  "elapsed_seconds": 8.6,
+  "tests": "----------------------------------------------------------------------\nRan 92 tests in 4.319s\n\nOK",
   "network_import_audit": true,
   "javascript_syntax": true,
   "privacy_receiver": true,
@@ -15,9 +15,9 @@
     "pypdf==7.0.0",
     "python-dotenv==1.2.4"
   ],
-  "not_verified": [
-    "real Tavily/Exa APIs",
-    "Ollama",
+  "outside_this_check": [
+    "real Tavily/Exa APIs (see STATUS.md)",
+    "Ollama (see verification/ollama.json)",
     "target-user interviews",
     "current NUSHP cost sharing",
     "clinician network participation"

@@ -22,7 +22,8 @@ class Fake(BaseHTTPRequestHandler):
     def do_POST(self):
         body=json.loads(self.rfile.read(int(self.headers.get("Content-Length",0))))
         self.seen.append((self.path,body))
-        payload={"response":"LOCAL TEST DRAFT: Confirm the visit and ask about the full price."} if self.path=="/api/generate" else {
+        lines=[l.split(". ",1)[0] for l in body.get("prompt","").splitlines() if ". " in l]
+        payload={"response":"\n".join(f"{n}. LOCAL TEST TRANSLATION {n}" for n in lines)} if self.path=="/api/generate" else {
             "results":[{"url":"https://example.org/clinic","title":"Test source clinic","content":"Primary care in Boston. Call (617) 555-0100."}]}
         self.send_response(200);self.send_header("Content-Type","application/json");self.end_headers();self.wfile.write(json.dumps(payload).encode())
 
@@ -68,7 +69,11 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(all(p["description"] not in json.dumps(b) and p["history"] not in json.dumps(b) for b in requests))
         prep=self.request("/api/case/preparation",dict(id=result["id"],use_model=True))
         self.assertIn("local model",prep["source"])
-        self.assertIn("LOCAL TEST DRAFT",prep["text"])
+        self.assertIn("LOCAL TEST TRANSLATION 1",prep["text"])
+        self.assertIn("Are you accepting new adult patients",prep["text"])  # English line kept beside its translation
+        model_calls=json.dumps([b for path,b in Fake.seen if path=="/api/generate"])
+        self.assertIs(json.loads(model_calls)[-1]["think"],False)
+        self.assertTrue(p["description"] not in model_calls and p["history"] not in model_calls)
         privacy=self.request("/api/privacy")
         self.assertGreater(privacy["attempted"],0)
         self.assertNotIn("test-key",json.dumps(privacy))
