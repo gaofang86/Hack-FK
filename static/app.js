@@ -251,7 +251,7 @@ const HOME_STARTS={
   concern:{description:'Get help organizing a symptom or health question. / 整理一个新症状或健康问题，进入健康需求核对。',hint:'What is bothering you, when did it start, and what help are you looking for? / 什么让你不舒服、什么时候开始，以及你想获得什么帮助？',placeholder:'I have been bothered by __ since __. I would like help figuring out the next step. / 我从……开始有……困扰，想整理一下接下来该怎么办。'},
   follow_up:{description:'Test results, a referral, or a next step a clinician suggested. / 检查结果、转诊，或医生已建议的复诊和后续事项。',hint:'What did you get back or what did the clinician recommend, when is it due, and which part do you need help with? You can add the file later. / 拿到了什么结果、医生建议做什么、什么时候完成，你卡在哪一步？报告可以稍后添加。',placeholder:'My doctor asked me to __ by __. I need help arranging it. / 医生让我在……之前……，我需要帮助安排这件事。'}
 };
-const INSURANCE_CARD='<section class="form-card"><h2>先弄清保险 / Check my coverage</h2><p>填写已有的保险计划，或标记没有保险、正在选计划。费用只按你核对过的福利计算，未知的不会当成 0。</p><button class="primary" data-action="edit-profile">填写或核对保险 / Add or check my plan</button></section>';
+const INSURANCE_CARD='<section class="form-card"><h2>先弄清保险 / Check my coverage</h2><p>填写已有的保险计划，或标记没有保险、正在选计划。费用只按你核对过的福利计算，未知的不会当成 0。</p><button class="primary" data-action="edit-coverage">填写或核对保险 / Add or check my plan</button></section>';
 let homeCompletion=null;
 function homePrompt(kind){return HOME_STARTS[kind]||HOME_STARTS.general;}
 function updateHomePrompt(kind){
@@ -296,7 +296,9 @@ function renderReportReview(){
  $('#app').innerHTML=`<div class="home"><p class="eyebrow">ON THIS DEVICE · REVIEW BEFORE SAVING</p><h1 class="home-title">先核对原文 / Check what we read</h1><p class="lede">仅提取报告事实。可以修正或忽略；确认前不会存入档案，也不会用报告推断诊断或安排复查。</p><form id="report-review">${field('资料名称 / Label','label',draft.label,'text','required maxlength="160"')}${draft.rows.map((r,i)=>`<section class="sub-card"><label class="checkline"><input type="checkbox" name="keep_${i}" checked><span>保留第 ${i+1} 项 / Keep result</span></label><div class="form-grid">${field('项目 / Test','name_'+i,r.name,'text','required maxlength="160"')}${field('结果和单位 / Result and unit','result_'+i,r.result,'text','required maxlength="160"')}${field('原文参考范围 / Reported reference','reference_'+i,r.reference,'text','maxlength="160"')}${select('原文标记 / Reported flag','flag_'+i,[['','无标记 / None'],['Low','Low'],['High','High']],r.flag)}</div><details><summary>原文依据 / Source text</summary><pre class="report-evidence">${esc(r.evidence)}</pre></details></section>`).join('')}<div class="form-actions"><button type="button" class="text-button" data-action="page-back">← 返回 / Back</button><button class="primary">我已核对，保存 / Confirm and save</button></div></form></div>`;
  $('#report-review').addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target);const rows=draft.rows.map((r,i)=>({omit:!f.has('keep_'+i),name:f.get('name_'+i),result:f.get('result_'+i),reference:f.get('reference_'+i),flag:f.get('flag_'+i)}));work(async()=>{S.journey=await api('/api/reports/confirm',{token:draft.token,confirmed:true,label:f.get('label'),rows});S.reportDraft=null;trail.clear();S.view='journey';render();});});
 }
-function showPersonalPreparation(){openDialog('我的问诊准备 / My preparation',`<p>这份材料供你核对和自行分享。还没有发送给医生或搜索服务。</p><pre class="personal-preparation">${esc(S.journey.personal_preparation)}</pre><button class="secondary" data-action="copy-personal-prep">复制 / Copy</button>`,true);}
+const prepSections=()=>(S.journey.preparation_view||{})[I18n.locale==='zh'?'zh':'en'];
+const prepText=()=>{const secs=prepSections();return secs?secs.map(x=>x.title+':\n'+x.items.map(i=>'- '+i).join('\n')).join('\n\n'):S.journey.personal_preparation;};
+function showPersonalPreparation(){const secs=prepSections();openDialog('我的问诊准备 / My preparation',`<p>这份材料供你核对和自行分享。还没有发送给医生或搜索服务。</p>${secs?`<div class="personal-preparation" data-i18n-keep>${secs.map(x=>`<section class="prep-section"><h3>${esc(x.title)}</h3><ul>${x.items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul></section>`).join('')}</div>`:`<pre class="personal-preparation">${esc(S.journey.personal_preparation)}</pre>`}<button class="secondary" data-action="copy-personal-prep">复制 / Copy</button>`,true);}
 function startBrowserDictation(){
   if(dictation.rec){dictation.stop();return;}
   const mode=$('[name="dictation_mode"]')?.value||'local',lang=$('[name="dictation_lang"]')?.value||'en-US';
@@ -337,26 +339,39 @@ function listRows(kind,rows){
 }
 function renderProfile(){
   const d=S.draft, first=!S.state.vault_exists||!S.state.profile_ready;
+  const coverage=card('Coverage','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${d.insurance==='yes'?'selected':''}" data-pins="yes"><span class="choice-radio"></span><strong>Yes</strong><span>I have a plan</span></button><button type="button" class="choice ${d.insurance==='no'?'selected':''}" data-pins="no"><span class="choice-radio"></span><strong>Not right now</strong><span>Self-pay, or choosing a plan</span></button></div>${d.insurance==='yes'?`<div class="sub-card"><p class="sub-title">Your plan</p>${field('Exact plan name','pplan_name',d.plan?.name||'','text','maxlength="120"')}</div>${sbcBox()}`:''}${d.insurance==='no'?`<label class="checkline"><input type="checkbox" name="wants_insurance" ${d.wants_insurance?'checked':''}><span>I’m thinking about getting a plan</span></label>`:''}`);
+  if(S.profileFocus==='coverage'&&S.state.vault_exists){
+    $('#app').innerHTML=`<div class="home narrow"><form id="profile-form"><p class="eyebrow">YOUR COVERAGE</p><h1 class="home-title">Your insurance</h1><p class="lede">Only this part is needed for your insurance questions. It stays encrypted on this device.</p>${coverage}<div class="form-actions"><button type="button" class="text-button" data-action="page-back">← Cancel</button><button type="submit" class="primary">Save ${icon('arrow')}</button></div></form></div>`;
+    $('#profile-form').addEventListener('submit',e=>{e.preventDefault();saveProfile();});
+    bindSbcFile();return;
+  }
   $('#app').innerHTML=`<div class="home"><form id="profile-form"><p class="eyebrow">${first?'START HERE':'YOUR HEALTH PROFILE'}</p><h1 class="home-title">${first?'Let’s get to know your health.':'Your health profile'}</h1><p class="lede">It stays encrypted on this device and grows with every visit. Skip anything you don’t want to add.</p>
     ${card('About you','Your age decides which checkups and vaccines we suggest.',`<div class="form-grid three">${field('Birth year','birth_year',d.birth_year??'','number','min="1900" max="'+new Date().getFullYear()+'" step="1" inputmode="numeric" required')}${select('Sex (optional)','sex',[['','Prefer not to say'],['female','Female'],['male','Male']],d.sex||'')}${select('Preferred language','language',[['English','English'],['Chinese','Chinese / 中文'],['Spanish','Spanish / Español']],d.language||'English')}</div><p class="hint">Sex is only used for screenings like cervical or breast cancer checks.</p>`)}
     ${card('Ongoing health','Optional. Separate items with commas.',`<label class="field"><span>Conditions</span><textarea name="conditions" rows="2" maxlength="2000" placeholder="Asthma, migraines">${esc((d.conditions||[]).join(', '))}</textarea></label><label class="field"><span>Allergies</span><textarea name="allergies" rows="2" maxlength="2000" placeholder="Penicillin, peanuts">${esc((d.allergies||[]).join(', '))}</textarea></label>`)}
     ${card('Medications','We’ll remind you before one runs out.',listRows('med',d.meds))}
     ${card('Follow-ups','Visits or tests a clinician asked you to come back for.',listRows('fu',d.fus))}
-    ${card('Coverage','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${d.insurance==='yes'?'selected':''}" data-pins="yes"><span class="choice-radio"></span><strong>Yes</strong><span>I have a plan</span></button><button type="button" class="choice ${d.insurance==='no'?'selected':''}" data-pins="no"><span class="choice-radio"></span><strong>Not right now</strong><span>Self-pay, or choosing a plan</span></button></div>${d.insurance==='yes'?`<div class="sub-card"><p class="sub-title">Your plan</p>${field('Exact plan name','pplan_name',d.plan?.name||'','text','maxlength="120"')}</div>${sbcBox()}`:''}${d.insurance==='no'?`<label class="checkline"><input type="checkbox" name="wants_insurance" ${d.wants_insurance?'checked':''}><span>I’m thinking about getting a plan</span></label>`:''}`)}
+    ${coverage}
     ${!S.state.vault_exists?card('Save it privately','Choose a passphrase. It encrypts your profile on this computer. There is no recovery.',field('Passphrase','passphrase','','password','required minlength="8" maxlength="1000" autocomplete="new-password"')):''}
     <div class="form-actions">${first?'<span class="small-note">You can change this anytime.</span>':'<button type="button" class="text-button" data-action="page-back">← Cancel</button>'}<button type="submit" class="primary">${first?'Save and continue':'Save'} ${icon('arrow')}</button></div></form></div>`;
   $('#profile-form').addEventListener('submit',e=>{e.preventDefault();saveProfile();});
+  bindSbcFile();
+}
+function bindSbcFile(){
   $('#sbc-file')?.addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;if(file.size>6e6)return toast('That PDF is too large (6 MB max).');
     const rd=new FileReader();rd.onload=()=>sendSbc({pdf_base64:String(rd.result).split(',')[1],file_name:file.name});rd.readAsDataURL(file);});
 }
 function readDraft(){
-  const f=$('#profile-form'); if(!f) return; const g=n=>f.elements[n]?.value??'';
-  Object.assign(S.draft,{birth_year:g('birth_year'),sex:g('sex'),language:g('language'),conditions:g('conditions').split(',').map(x=>x.trim()).filter(Boolean),allergies:g('allergies').split(',').map(x=>x.trim()).filter(Boolean),
-    meds:S.draft.meds.map((_,i)=>({name:g(`med_name_${i}`),refill_by:g(`med_refill_by_${i}`)})),fus:S.draft.fus.map((_,i)=>({what:g(`fu_what_${i}`),due:g(`fu_due_${i}`)})),
-    wants_insurance:f.elements.wants_insurance?f.elements.wants_insurance.checked:S.draft.wants_insurance});
+  const f=$('#profile-form'); if(!f) return; const g=n=>f.elements[n]?.value??'', has=n=>!!f.elements[n], list=n=>g(n).split(',').map(x=>x.trim()).filter(Boolean);
+  // A focused editor (coverage only) must not blank fields that are not on the page.
+  for(const k of ['birth_year','sex','language'])if(has(k))S.draft[k]=g(k);
+  for(const k of ['conditions','allergies'])if(has(k))S.draft[k]=list(k);
+  if(has('med_name_0'))S.draft.meds=S.draft.meds.map((_,i)=>({name:g(`med_name_${i}`),refill_by:g(`med_refill_by_${i}`)}));
+  if(has('fu_what_0'))S.draft.fus=S.draft.fus.map((_,i)=>({what:g(`fu_what_${i}`),due:g(`fu_due_${i}`)}));
+  if(has('wants_insurance'))S.draft.wants_insurance=f.elements.wants_insurance.checked;
   if(f.elements.pplan_name) S.draft.plan={...(S.draft.plan||{}),name:g('pplan_name')};
 }
-function editProfile(){
+function editProfile(focus=null){
+  S.profileFocus=focus;
   const p=S.health?.profile||{}, r=p.refills||{};
   S.draft={birth_year:p.birth_year,sex:p.sex,language:p.language,conditions:p.conditions||[],allergies:p.allergies||[],insurance:p.insurance||'',wants_insurance:!!p.wants_insurance,plan:p.plan,
     meds:(p.medications||[]).map(n=>({name:n,refill_by:r[n]||''})).concat([{name:'',refill_by:''}]),fus:(p.follow_ups||[]).map(f=>({...f})).concat([{what:'',due:''}])};
@@ -369,7 +384,9 @@ async function saveProfile(){
     S.justCreated=!S.state.profile_ready;
     const plan=d.insurance==='yes'&&d.plan?.name?{rule:'copay',...d.plan}:(d.plan?.name?d.plan:null);
     S.health=await api('/api/profile',{birth_year:d.birth_year,sex:d.sex,language:d.language,conditions:d.conditions,allergies:d.allergies,medications:d.meds.filter(m=>m.name.trim()),follow_ups:d.fus.filter(f=>f.what.trim()),insurance:d.insurance,wants_insurance:d.insurance==='no'&&d.wants_insurance,plan});
-    S.state=await api('/api/state'); S.view='home'; render(); window.scrollTo(0,0); toast('Saved on this device.');
+    S.state=await api('/api/state');
+    if(S.profileFocus==='coverage'&&S.journey){S.profileFocus=null;S.journey=await api('/api/journey?id='+encodeURIComponent(S.journey.id));S.view='journey';render();window.scrollTo(0,0);toast('Saved. Your questions now match your coverage.');return;}
+    S.profileFocus=null; S.view='home'; render(); window.scrollTo(0,0); toast('Saved on this device.');
   });
 }
 function visitReason(c){
@@ -734,7 +751,7 @@ document.addEventListener('click',event=>{
   if(action==='dictate')return startBrowserDictation();
   if(action==='journey-prep')return showPersonalPreparation();
   if(action==='task-details')return work(async()=>{S.journey=await api('/api/journey?id='+encodeURIComponent(S.current.id));S.current=null;S.view='journey';S.expect=null;render();window.scrollTo(0,0);});
-  if(action==='copy-personal-prep')return work(async()=>{await navigator.clipboard.writeText(S.journey.personal_preparation);toast('已复制；由你决定分享对象。 / Copied for you to share.');});
+  if(action==='copy-personal-prep')return work(async()=>{await navigator.clipboard.writeText(prepText());toast('已复制；由你决定分享对象。 / Copied for you to share.');});
   if(action==='journey-find'){if(S.journey.safety_notice?.level==='emergency')return toast('请先处理紧急警示 / Please address the emergency warning.');S.activeJourney=S.journey.id;S.input=fromProfile();S.input.description='';S.input.feel=['concern','general'].includes(S.journey.kind)?'unsure':'okay';S.input.need='';S.input.checks=[];S.input.none_reported=!['concern','general'].includes(S.journey.kind);S.safety=null;S.current=null;S.expect=null;S.preview=null;S.step=0;S.sub=['concern','general'].includes(S.journey.kind)||S.journey.safety_notice?'symptoms':'need';if(S.journey.safety_notice){S.input.description=S.journey.goal;S.safety=S.journey.safety_notice;}S.view='wizard';render();window.scrollTo(0,0);return;}
   if(action==='edit-preferences')return preferencesDialog();
 
@@ -744,6 +761,7 @@ document.addEventListener('click',event=>{
   if(action==='home'||action==='new'){S.input=fresh();S.input.visit_date=S.state.today||today();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.step=0;S.current=null;S.preview=null;render();return;}
   if(action==='home-page'){if(!S.state.unlocked){S.view=S.state.vault_exists?'gate':'home';render();return;}S.view='home';S.expect=null;S.current=null;return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
   if(action==='edit-profile')return editProfile();
+  if(action==='edit-coverage')return editProfile('coverage');
   if(action==='plans')return work(openPlans);
   if(action==='sbc-paste'){const t=$('#sbc-text')?.value||'';if(t.trim().length<200)return toast('Paste the whole SBC text.');return sendSbc({text:t,file_name:'pasted text'});}
   if(action==='add-plan'){readPlans();S.plans.plans.push({name:'',premium:'',oop_max:'',costs:{}});renderPlans();return;}

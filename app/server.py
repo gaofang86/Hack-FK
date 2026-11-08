@@ -79,7 +79,10 @@ class App:
     def journey_view(self, case):
         attached = [self.store.data.get('reports', {})[rid] for rid in case.get('report_ids', []) if rid in self.store.data.get('reports', {})]
         notice = safety_check(dict(checks=[], description=case.get('goal', '')))
-        return dict(case, reports=attached, safety_notice=notice if notice['level'] in ('emergency', 'same_day') else None, personal_preparation=journeys.preparation(case, attached),
+        profile = self.store.data.get('profile', {})
+        sections = journeys.preparation_sections(case, attached, profile)
+        return dict(case, reports=attached, safety_notice=notice if notice['level'] in ('emergency', 'same_day') else None, personal_preparation=journeys.preparation(case, attached, profile),
+                    preparation_view={lang: journeys.localized(sections, lang) for lang in ('en', 'zh')}, coverage_situation=journeys.coverage_situation(case, profile) if case.get('kind') == 'insurance' else None,
                     next_action=next_action(case, ranked(case)) if 'input' in case else journeys.next_step(case))
 
     def dispatch(self, method, path, body, query):

@@ -39,7 +39,7 @@ class JourneyTests(unittest.TestCase):
     def test_all_scenarios_start_without_report_or_full_profile(self):
         for kind in ('general','insurance','first_visit','concern','report','follow_up'):
             j=self.task(kind);self.assertEqual(j['kind'],kind);self.assertEqual(j['reports'],[])
-            self.assertIn('Questions for my clinician',j['personal_preparation'])
+            self.assertIn('One question first' if kind=='insurance' else 'Questions for my clinician',j['personal_preparation'])
         self.assertEqual(len(self.get('/api/state')['cases']),6)
         self.assertFalse(self.get('/api/state')['profile_ready'])
     def test_review_is_required_and_report_does_not_create_medical_tasks(self):
@@ -98,3 +98,33 @@ class JourneyTests(unittest.TestCase):
         p=self.post('/api/reports/preview',journey_id=j['id'],pdf_base64=synthetic_pdf())
         with self.assertRaises(ValueError):self.post('/api/reports/confirm',token=p['token'],confirmed=True,rows=[])
         self.assertFalse(self.app.store.data.get('reports'))
+
+
+class CoveragePreparationTests(unittest.TestCase):
+    def sections(self, goal, profile=None):
+        from app import journeys
+        case = {'kind': 'insurance', 'goal': goal}
+        secs = journeys.preparation_sections(case, [], profile)
+        return journeys.coverage_situation(case, profile), journeys.localized(secs, 'en'), journeys.localized(secs, 'zh')
+
+    def test_goal_wording_and_profile_choose_the_branch(self):
+        situation, en, _ = self.sections('i have student insurance but I am not sure how to use it.')
+        self.assertEqual(situation, 'insured')
+        text = str(en)
+        self.assertIn('in network', text); self.assertNotIn('uninsured', text); self.assertNotIn('self-pay', text)
+        self.assertNotIn('Questions for my clinician', text)
+        self.assertEqual(self.sections("I don't have insurance right now")[0], 'uninsured')
+        self.assertEqual(self.sections('Which plan should I choose?')[0], 'choosing')
+        self.assertEqual(self.sections('I want help')[0], 'unknown')
+        # Saved profile beats wording and names the plan.
+        situation, en, _ = self.sections('I want help', {'insurance': 'yes', 'plan': {'name': 'SYNTHETIC PPO'}})
+        self.assertEqual(situation, 'insured'); self.assertIn('SYNTHETIC PPO', str(en))
+        self.assertEqual(self.sections('I have insurance', {'insurance': 'no', 'wants_insurance': True})[0], 'choosing')
+
+    def test_each_language_view_is_single_language_and_keeps_user_text(self):
+        import re
+        _, en, zh = self.sections('我有学生保险 SYNTHETIC')
+        for sec in en:
+            self.assertFalse(re.search(r'[\u3400-\u9fff]', sec['title'] + ''.join(i for i in sec['items'] if 'SYNTHETIC' not in i)))
+        self.assertTrue(all(re.search(r'[\u3400-\u9fff]', sec['title']) for sec in zh))
+        self.assertEqual(en[0]['items'][0], '我有学生保险 SYNTHETIC')
