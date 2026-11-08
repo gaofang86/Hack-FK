@@ -29,6 +29,33 @@ BROOKLINE = [
 ]
 
 
+# Named clinicians from official public profiles. Not exact-plan network, price or appointment proof.
+CLINICIANS = [
+    {"id": "dr-eric-hwang", "name": "Eric L. Hwang, MD", "practice_id": "bilh-beacon",
+     "url": "https://primarycare.bilh.org/details/6789/eric-hwang-primary_care-brookline", "checked_on": "2026-11-08",
+     "source_note": "Official BILH profile lists primary care at 1180 Beacon Street, says currently accepting new patients, and lists Blue Cross Blue Shield - MA. Exact plan/network, appointments and price are unconfirmed."},
+]
+
+
+def _norm(text):
+    return " ".join("".join(ch.lower() if ch.isalnum() else " " for ch in text).split())
+
+
+def directory_search(query, limit=10):
+    """Local name/address lookup over sourced entries only. Nothing is fetched."""
+    terms = [t for t in _norm(query or "").split() if t not in ("dr", "doctor", "md")]
+    if not terms:
+        return []
+    practices = {p["id"]: p for p in REAL + BROOKLINE}
+    entries = [dict(type="clinician", id=c["id"], name=c["name"], practice=practices[c["practice_id"]]["name"],
+                    address=practices[c["practice_id"]]["address"], phone=practices[c["practice_id"]].get("phone", ""),
+                    url=c["url"], source_note=c["source_note"], checked_on=c["checked_on"]) for c in CLINICIANS]
+    entries += [dict(type="practice", id=p["id"], name=p["name"], practice=p["kind"], address=p["address"], phone=p.get("phone", ""),
+                     url=p["url"], source_note=p["source_note"], checked_on=SOURCES_CHECKED) for p in REAL + BROOKLINE]
+    hits = [e for e in entries if all(t in _norm(" ".join([e["name"], e["practice"], e["address"]])) for t in terms)]
+    return hits[:limit]
+
+
 def candidates(city, state, demo=False, service="primary_care"):
     today = date.today().isoformat()
     if demo and service == "same_day":

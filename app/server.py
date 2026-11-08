@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 from . import journeys, reports
 from .agent import CareAgent
 from .benefits import clean_plan, number
-from .catalog import candidates
+from .catalog import candidates, directory_search
 from .config import Config, ROOT
 from .egress import Egress, EgressBlocked, EgressError
 from .llm import LocalModel
@@ -94,6 +94,10 @@ class App:
                 self.report_previews.clear()
             if path == "/api/state" and method == "GET":
                 return self.state()
+            if path == "/api/directory" and method == "GET":
+                # Public sourced directory, matched locally; works locked and offline, nothing leaves the device.
+                return dict(results=directory_search(query.get("q", [""])[0][:120]),
+                            scope="Sourced local directory only. Not proof of network, price or appointments.")
             if path in ("/api/vault/create", "/api/vault/unlock") and method == "POST":
                 phrase = body.get("passphrase", "")
                 if not isinstance(phrase, str) or len(phrase) > 1000:

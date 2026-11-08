@@ -72,3 +72,12 @@ class LinkTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DirectorySearchTests(unittest.TestCase):
+    def test_name_and_address_lookup_is_local_and_sourced(self):
+        from app.catalog import directory_search
+        hits = directory_search('Dr. Hwang')
+        self.assertEqual(hits[0]['type'], 'clinician'); self.assertIn('1180 Beacon', hits[0]['address']); self.assertTrue(hits[0]['url'].startswith('https://'))
+        self.assertTrue(any(h['id'] == 'bwh-brookline' for h in directory_search('brookline place')))
+        self.assertEqual(directory_search('dr'), []); self.assertEqual(directory_search('zzzz nobody'), [])
