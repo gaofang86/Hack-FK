@@ -45,6 +45,16 @@ def insured(person):
     plan, service = person.get("plan"), person.get("service")
     known = [{"label": "Your plan", "value": plan["name"] if plan else "Not entered"},
              {"label": "This visit", "value": _plan_line(plan)}]
+    b = person.get("benefits")
+    if b:
+        from .sbc import describe
+        for key, label in (("primary", "Primary care"), ("urgent", "Urgent care"), ("er", "Emergency room"), ("generic", "Generic drugs")):
+            known.append({"label": label, "value": describe((b.get("services") or {}).get(key, {}))})
+        if b.get("deductible") is not None:
+            known.append({"label": "Deductible", "value": f"${b['deductible']:,.2f}" + (f" (${b['deductible_remaining']:,.2f} left)" if b.get("deductible_remaining") is not None else "")})
+        if b.get("oop_max") is not None:
+            known.append({"label": "Out-of-pocket limit", "value": f"${b['oop_max']:,.2f}"})
+        known.append({"label": "Read from", "value": f"{b['source'].get('file') or 'SBC'} · {b['source'].get('read_on', '')}"})
     confirm = ["Is this clinic, at this location, in-network for my exact plan?",
                "Do I need a referral or prior authorization for this visit?",
                "What will I owe at the visit, and could any extra bill follow?"]

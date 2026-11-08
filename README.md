@@ -34,6 +34,7 @@ Stored only in the encrypted vault:
 - Medications, with when each runs out
 - Follow-ups a clinician asked for, with due dates
 - Coverage: insured, not insured, or choosing a plan
+- **Your plan's costs, read from its SBC.** Every US plan publishes a Summary of Benefits and Coverage on the same federal template. Upload the PDF (or paste its text) and `app/sbc.py` reads the deductible, out-of-pocket limit and the in-network cost for primary care, specialists, preventive care, urgent care, the ER, generic drugs and mental health. It uses fixed rules on your computer, with no model and no network. Each value shows the line it came from; you review and fix it before saving. Only the values and a SHA-256 fingerprint of the file are kept, not the file. From then on, the cost estimate, "what to expect" and the insured results page use your plan's real numbers for each kind of visit.
 
 The home page ("Welcome back") shows:
 
@@ -117,6 +118,7 @@ ollama pull qwen2.5:3b
 | `app/benefits.py` | Visit cost arithmetic |
 | `app/expect.py` | The "what to expect" page |
 | `app/scenarios.py` | A/B/C guidance and plan comparison |
+| `app/sbc.py` | Reads a plan's SBC (PDF via `pypdf`, or text) into per-service costs |
 | `app/egress.py` | The only network gateway, with DLP and ledger |
 | `app/store.py` | Encrypted vault |
 | `app/server.py` | Local HTTP API |
@@ -132,4 +134,4 @@ python3 scripts/audit_egress.py
 node --check static/app.js
 ```
 
-There are 60 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
+There are 69 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.

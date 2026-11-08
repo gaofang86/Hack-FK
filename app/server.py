@@ -17,6 +17,8 @@ from .llm import LocalModel
 from .expect import expectations
 from .health import clean_profile, record_visit, view as health_view
 from .scenarios import NEEDS, compare_plans, guidance, suggested_needs
+from .sbc import plan_for, read_upload, to_plan
+from .benefits import clean_plan as _clean_plan
 from .navigation import SERVICES, clean_input, from_search, ranked, safety_check, text, update_quote
 from .triage import checks_view, symptom_terms
 from .places import Places, plan_queries
@@ -114,6 +116,29 @@ class App:
                 self.store.data["profile"]["plan_compare"] = {"needs": body.get("needs"), "plans": body.get("plans")}
                 self.store.save()
                 return dict(result=result)
+            if path == "/api/plan/sbc" and method == "POST":
+                # Parse only; nothing is saved until the user reviews and confirms the values.
+                return read_upload(body)
+            if path == "/api/plan/benefits" and method == "POST":
+                profile = self.store.data["profile"]
+                name = text(body.get("name"), 120)
+                if not name:
+                    raise ValueError("Add the plan name")
+                ded, used, oop = (number(body.get(k), k.replace("_", " ")) for k in ("deductible", "deductible_used", "oop_max"))
+                if ded is not None and used is not None and used > ded:
+                    raise ValueError("Deductible used can’t be more than the deductible")
+                benefits = {"name": name, "services": to_plan(body),
+                            "start": text(body.get("start"), 10), "end": text(body.get("end"), 10),
+                            "deductible": ded, "deductible_used": used,
+                            "deductible_remaining": None if ded is None else ded - (used or 0),
+                            "oop_max": oop, "oop_remaining": oop, "premium": number(body.get("premium"), "premium"),
+                            "source": {k: text((body.get("source") or {}).get(k), 120) for k in ("file", "sha256", "read_on")}}
+                _clean_plan(plan_for(benefits, "primary_care"))  # validates dates and numbers
+                profile["plan_benefits"] = benefits
+                profile["plan"] = _clean_plan(plan_for(benefits, "primary_care"))
+                profile["insurance"] = "yes"
+                self.store.save()
+                return health_view(profile)
             if path == "/api/profile/todo" and method == "POST":
                 done = self.store.data["profile"].setdefault("done", {})
                 ident = text(body.get("id"), 200)
@@ -158,6 +183,7 @@ class App:
                             scope="App gateway activity only; not a system-wide network capture or proof of process isolation.")
             if path == "/api/preview" and method == "POST":
                 person = clean_input(body)
+                person["benefits"] = (self.store.data["profile"].get("plan_benefits") if person["insurance"] == "yes" else None)
                 public = {k: person[k] for k in ("city", "state", "zip")}
                 public["share_insurer"] = False
                 venue = "urgent_care" if person["service"] == "same_day" else "primary_care"
@@ -287,7 +313,8 @@ def make_handler(app):
                     return self.send(403, {"error": "Missing local application header"})
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
-                    if not 0 <= length <= 100000:
+                    limit = 8_500_000 if parsed.path == "/api/plan/sbc" else 100000
+                    if not 0 <= length <= limit:
                         return self.send(413, {"error": "Request is too large"})
                     self.connection.settimeout(10)
                     body = json.loads(self.rfile.read(length) or b"{}")

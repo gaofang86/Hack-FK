@@ -64,3 +64,8 @@
 .plan-card+.secondary{margin-bottom:16px}
 @media(max-width:900px){.scenario-grid{columns:1}.need-list{grid-template-columns:1fr}.cost-row{grid-template-columns:1fr 1fr}.cost-row span{grid-column:1/-1}}
 .scenario-grid{display:grid;columns:auto;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;align-items:start}.scenario-grid .form-card{display:block;margin:0 0 16px}
+.file-btn{cursor:pointer;margin-bottom:12px}.sbc-done{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--teal-dark)}.sbc-done svg{width:15px;height:15px;margin-top:3px}
+.sbc-row{display:grid;grid-template-columns:1fr 300px;gap:14px;padding:12px 0;border-top:1px solid var(--line)}.sbc-row:first-of-type{border-top:0}.sbc-label strong{font-size:12px;display:block}
+q{display:block;font-size:10px;color:var(--muted);background:#f6f8f2;border-left:2px solid #cddbc9;padding:5px 8px;margin:6px 0 10px;quotes:none;line-height:1.6}q.missing{border-left-color:#e6d2a6;color:#80602a}
+.sbc-edit{display:grid;grid-template-columns:1fr 80px;gap:8px;align-items:center}.sbc-edit select,.sbc-edit input[type=number]{border:1px solid #dce3da;border-radius:6px;padding:8px;font-size:12px;background:white;min-width:0}.small-check{grid-column:1/-1;margin:0}
+@media(max-width:760px){.sbc-row{grid-template-columns:1fr}}

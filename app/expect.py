@@ -61,10 +61,15 @@ def _share(plan, fee):
 
 def illustration(person):
     """Example fees run through the user's own situation. Labeled as an illustration."""
-    plan, rows = person.get("plan"), []
+    plan, rows, b = person.get("plan"), [], person.get("benefits")
     for venue, fee in EXAMPLE_FEES.items():
         row = {"venue": VENUES[venue]["name"], "example_fee": fee}
-        if person.get("insurance") == "yes" and plan:
+        if person.get("insurance") == "yes" and b:
+            from .sbc import share
+            amount, how = share((b.get("services") or {}).get("urgent" if venue == "urgent_care" else "er"),
+                                fee, b.get("deductible_remaining"), b.get("oop_remaining"))
+            row.update(you_pay=amount, how=how)
+        elif person.get("insurance") == "yes" and plan:
             amount, how = _share(plan, fee)
             if venue == "er" and plan["rule"] == "copay":
                 amount, how = None, "Emergency rooms usually have their own, higher copay. Find the “emergency room” line in your plan’s benefits summary."

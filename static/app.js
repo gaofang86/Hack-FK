@@ -206,10 +206,12 @@ function renderProfile(){
     ${card('Ongoing health','Optional. Separate items with commas.',`<label class="field"><span>Conditions</span><textarea name="conditions" rows="2" maxlength="2000" placeholder="Asthma, migraines">${esc((d.conditions||[]).join(', '))}</textarea></label><label class="field"><span>Allergies</span><textarea name="allergies" rows="2" maxlength="2000" placeholder="Penicillin, peanuts">${esc((d.allergies||[]).join(', '))}</textarea></label>`)}
     ${card('Medications','We’ll remind you before one runs out.',listRows('med',d.meds))}
     ${card('Follow-ups','Visits or tests a clinician asked you to come back for.',listRows('fu',d.fus))}
-    ${card('Coverage','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${d.insurance==='yes'?'selected':''}" data-pins="yes"><span class="choice-radio"></span><strong>Yes</strong><span>I have a plan</span></button><button type="button" class="choice ${d.insurance==='no'?'selected':''}" data-pins="no"><span class="choice-radio"></span><strong>Not right now</strong><span>Self-pay, or choosing a plan</span></button></div>${d.insurance==='yes'?`<div class="sub-card"><p class="sub-title">Your plan</p>${field('Exact plan name','pplan_name',d.plan?.name||'','text','maxlength="120"')}</div>`:''}${d.insurance==='no'?`<label class="checkline"><input type="checkbox" name="wants_insurance" ${d.wants_insurance?'checked':''}><span>I’m thinking about getting a plan</span></label>`:''}`)}
+    ${card('Coverage','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${d.insurance==='yes'?'selected':''}" data-pins="yes"><span class="choice-radio"></span><strong>Yes</strong><span>I have a plan</span></button><button type="button" class="choice ${d.insurance==='no'?'selected':''}" data-pins="no"><span class="choice-radio"></span><strong>Not right now</strong><span>Self-pay, or choosing a plan</span></button></div>${d.insurance==='yes'?`<div class="sub-card"><p class="sub-title">Your plan</p>${field('Exact plan name','pplan_name',d.plan?.name||'','text','maxlength="120"')}</div>${sbcBox()}`:''}${d.insurance==='no'?`<label class="checkline"><input type="checkbox" name="wants_insurance" ${d.wants_insurance?'checked':''}><span>I’m thinking about getting a plan</span></label>`:''}`)}
     ${!S.state.vault_exists?card('Save it privately','Choose a passphrase. It encrypts your profile on this computer. There is no recovery.',field('Passphrase','passphrase','','password','required minlength="8" maxlength="1000" autocomplete="new-password"')):''}
     <div class="form-actions">${first?'<span class="small-note">You can change this anytime.</span>':'<button type="button" class="text-button" data-action="home-page">← Cancel</button>'}<button type="submit" class="primary">${first?'Save and continue':'Save'} ${icon('arrow')}</button></div></form></div>`;
   $('#profile-form').addEventListener('submit',e=>{e.preventDefault();saveProfile();});
+  $('#sbc-file')?.addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;if(file.size>6e6)return toast('That PDF is too large (6 MB max).');
+    const rd=new FileReader();rd.onload=()=>sendSbc({pdf_base64:String(rd.result).split(',')[1],file_name:file.name});rd.readAsDataURL(file);});
 }
 function readDraft(){
   const f=$('#profile-form'); if(!f) return; const g=n=>f.elements[n]?.value??'';
@@ -270,6 +272,40 @@ async function saveVisit(){
     toast(n?`Saved. ${n} ${n===1?'item was':'items were'} added to your profile.`:'Visit saved to your profile.');
   });
 }
+function sbcBox(){
+  const b=S.health?.benefits;
+  if(!S.state.unlocked) return '<p class="hint">After you save, you can upload your plan’s benefits summary (SBC) to fill in your costs.</p>';
+  return `<div class="sub-card upload"><p class="sub-title">Your plan’s benefits summary (SBC)</p>${b?`<p class="sbc-done">${icon('check')} Read from <strong>${esc(b.source?.file||'SBC')}</strong> on ${esc(b.source?.read_on||'')}: ${esc(b.name)}</p>`:'<p class="hint">Every US plan publishes a standard “Summary of Benefits and Coverage” PDF. Upload it and we’ll read your copays, deductible and out-of-pocket limit. It’s read on this computer and never uploaded anywhere.</p>'}
+    <label class="secondary small file-btn">${icon('arrow')} ${b?'Replace with a new SBC':'Upload SBC (PDF)'}<input type="file" id="sbc-file" accept="application/pdf,.pdf" hidden></label>
+    <details class="private-details"><summary>Or paste the SBC text</summary><textarea id="sbc-text" rows="5" maxlength="200000" placeholder="Paste the text of your plan’s Summary of Benefits and Coverage"></textarea><button type="button" class="secondary small" data-action="sbc-paste">Read pasted text</button></details></div>`;
+}
+async function sendSbc(body){
+  readDraft();
+  await work(async()=>{S.sbc=await api('/api/plan/sbc',body);S.view='sbc';render();window.scrollTo(0,0);},'Reading your plan on this computer…');
+}
+function costInputs(key,svc){
+  const c=svc.cost||{kind:'unknown'};
+  return `<div class="sbc-row"><div class="sbc-label"><strong>${esc(svc.label)}</strong>${svc.evidence?`<q>${esc(svc.evidence)}</q>`:'<q class="missing">Not found in the document</q>'}</div>
+    <div class="sbc-edit"><select name="k_${key}" aria-label="${esc(svc.label)} cost type">${[['copay','Copay'],['coinsurance','Coinsurance'],['free','No charge'],['not_covered','Not covered'],['unknown','Don’t know']].map(([v,t])=>`<option value="${v}" ${c.kind===v?'selected':''}>${t}</option>`).join('')}</select>
+    <input type="number" min="0" step="0.01" name="v_${key}" value="${c.kind==='copay'?c.amount:c.kind==='coinsurance'?c.pct:''}" placeholder="$ or %" aria-label="${esc(svc.label)} amount">
+    <label class="checkline small-check"><input type="checkbox" name="d_${key}" ${c.after_deductible?'checked':''}><span>after deductible</span></label></div></div>`;
+}
+function renderSbc(){
+  const r=S.sbc, f=r.fields, ev=k=>f[k]?.evidence?`<q>${esc(f[k].evidence)}</q>`:'<q class="missing">Not found</q>';
+  $('#app').innerHTML=`<div class="home"><form id="sbc-form"><p class="eyebrow">CHECK WHAT WE READ</p><h1 class="home-title">Is this right?</h1><p class="lede">We read ${r.found} values from <strong>${esc(r.source.file)}</strong> on this computer, with fixed rules. Each one shows the line it came from. Fix anything that’s off, then save.</p>
+    ${r.is_sbc?'':'<div class="notice">This doesn’t look like a standard SBC. Check every value carefully.</div>'}
+    ${card('The plan','',`${field('Plan name','name',f.name?.value||'','text','required maxlength="120"')}${ev('name')}<div class="form-grid">${field('Coverage starts','start',f.start?.value||'','date')}${field('Coverage ends','end',f.end?.value||'','date')}</div><div class="form-grid three">${field('Deductible ($)','deductible',f.deductible?.value??'','number','min="0" step="0.01"')}${field('Used so far this year ($)','deductible_used','','number','min="0" step="0.01" placeholder="0 if none"')}${field('Out-of-pocket limit ($)','oop_max',f.oop_max?.value??'','number','min="0" step="0.01"')}</div>${ev('deductible')}${ev('oop_max')}${field('Monthly premium ($, optional)','premium','','number','min="0" step="0.01"')}`)}
+    ${card('What you pay for each kind of care','In-network, as the SBC says.',Object.entries(r.services).map(([k,v])=>costInputs(k,v)).join(''))}
+    <p class="computed">${icon('lock')} ${esc(r.source.how)} The file itself isn’t saved, only these values and a fingerprint of the file.</p>
+    <div class="form-actions"><button type="button" class="text-button" data-action="edit-profile">← Back</button><button type="submit" class="primary">Save to my profile ${icon('arrow')}</button></div></form></div>`;
+  $('#sbc-form').addEventListener('submit',e=>{e.preventDefault();saveSbc();});
+}
+async function saveSbc(){
+  const f=$('#sbc-form'); if(!f.reportValidity()) return; const g=n=>f.elements[n]?.value??'';
+  const services={}; Object.keys(S.sbc.services).forEach(k=>{const kind=g(`k_${k}`),v=g(`v_${k}`),d=f.elements[`d_${k}`]?.checked;services[k]=kind==='copay'?{kind,amount:v,after_deductible:d}:kind==='coinsurance'?{kind,pct:v,after_deductible:d}:{kind};});
+  await work(async()=>{S.health=await api('/api/plan/benefits',{name:g('name'),start:g('start'),end:g('end'),deductible:g('deductible'),deductible_used:g('deductible_used'),oop_max:g('oop_max'),premium:g('premium'),services,source:S.sbc.source});
+    S.sbc=null;S.state=await api('/api/state');S.view='home';render();window.scrollTo(0,0);toast('Your plan’s costs are saved on this device.');});
+}
 function renderGate(){
   $('#app').innerHTML=`<div class="home narrow"><p class="eyebrow">WELCOME BACK</p><h1 class="home-title">Unlock your health profile.</h1><p class="lede">A health profile is saved on this computer. It’s encrypted, so it needs your passphrase. For your privacy it locks itself after a while.</p><form id="gate-form"><section class="form-card">${field('Your passphrase','passphrase','','password','required minlength="8" maxlength="1000" autocomplete="current-password"')}${S.state.preview_mode?'<p class="hint">Test preview passphrase: <code>firstvisit-preview-only</code></p>':''}</section><div class="form-actions"><span class="small-note">Nothing is sent anywhere.</span><button type="submit" class="primary">Unlock ${icon('arrow')}</button></div></form>
   <section class="form-card new-here"><div class="form-card-head"><h3>New here, or forgot your passphrase?</h3><p>Start a new profile. This erases the saved profile on this computer. There’s no way to recover it.</p></div><button type="button" class="secondary" data-action="start-over">Start a new profile</button></section></div>`;
@@ -290,6 +326,7 @@ function render() {
   if (S.view==='known') return renderKnown();
   if (S.view==='visit') return renderVisit();
   if (S.view==='plans') return renderPlans();
+  if (S.view==='sbc') return renderSbc();
   if (S.expect) return renderExpect();
   if (S.step===4 && S.current) return renderResults();
   $('#app').innerHTML = `<div class="wizard-layout">${sidebar()}<section class="form-panel">${S.input.demo?'<div class="demo-banner">FICTIONAL DEMO · No actual providers, prices, ratings or insurance offers</div>':''}<form id="wizard">${stepContent()}${S.step===0?'':`<div class="form-actions">${S.step>0?'<button type="button" class="text-button" data-action="back">← Back</button>':'<span class="small-note">A few steps to a clearer choice.</span>'}<button type="submit" class="primary">${S.step===3?(S.preview?'Find my care':'Review search'):'Continue'} ${icon('arrow')}</button></div>`}<div id="working" role="status" class="working"></div></form></section></div>`;
@@ -309,6 +346,7 @@ async function advance() {
     if(r.level==='emergency' || (r.level==='same_day' && S.input.service!=='same_day')){ render(); $('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
   }
   if(S.step===1 && Number(S.input.age)<18) return toast('This version supports adults (18+). For a child or teen, contact a pediatric clinician.');
+  if(S.step===0 && S.input.insurance==='yes' && S.health?.plan_by_service?.[S.input.service]) S.input.plan=S.health.plan_by_service[S.input.service];
   if(S.step===1 && !S.input.insurance) return toast('Choose whether you have insurance.');
   if(S.step<3) {S.step++; S.preview=null; render(); window.scrollTo(0,0); return;}
   await work(async()=>{
@@ -474,6 +512,7 @@ document.addEventListener('click',event=>{
   if(action==='home-page'){if(!S.state.unlocked){S.view='gate';render();return;}S.view='home';S.expect=null;S.current=null;return work(async()=>{S.health=await api('/api/profile');render();window.scrollTo(0,0);});}
   if(action==='edit-profile')return editProfile();
   if(action==='plans')return work(openPlans);
+  if(action==='sbc-paste'){const t=$('#sbc-text')?.value||'';if(t.trim().length<200)return toast('Paste the whole SBC text.');return sendSbc({text:t,file_name:'pasted text'});}
   if(action==='add-plan'){readPlans();S.plans.plans.push({name:'',premium:'',oop_max:'',costs:{}});renderPlans();return;}
   if(action==='record-visit'){if(S.view==='home')S.current=null;return work(async()=>{if(!S.health)S.health=await api('/api/profile');recordVisit();});}
   if(action==='back-to-results'){S.visit=null;S.view='wizard';render();return;}

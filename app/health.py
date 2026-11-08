@@ -181,6 +181,9 @@ def better_choices(profile):
 
 
 def view(profile, today=None):
-    return {"profile": {k: v for k, v in profile.items() if k != "done"}, "age": age(profile, today),
+    from .sbc import plan_for
+    b = profile.get("plan_benefits")
+    by_service = {s: plan_for(b, s) for s in ("primary_care", "follow_up", "same_day")} if b else {}
+    return {"plan_by_service": by_service, "benefits": b,"profile": {k: v for k, v in profile.items() if k != "done"}, "age": age(profile, today),
             "todos": todos(profile, today), "choices": better_choices(profile),
             "complete": bool(profile.get("birth_year"))}
