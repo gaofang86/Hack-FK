@@ -16,6 +16,7 @@ from .egress import Egress, EgressBlocked, EgressError
 from .llm import LocalModel
 from .expect import expectations
 from .health import clean_profile, record_visit, view as health_view
+from .scenarios import NEEDS, compare_plans, guidance, suggested_needs
 from .navigation import SERVICES, clean_input, from_search, ranked, safety_check, text, update_quote
 from .triage import checks_view, symptom_terms
 from .places import Places, plan_queries
@@ -52,7 +53,7 @@ class App:
         return case
 
     def shown(self, case):
-        return dict(case, results=ranked(case))
+        return dict(case, results=ranked(case), scenario=guidance(case["input"]))
 
     def dispatch(self, method, path, body, query):
         with self.mutex:
@@ -103,6 +104,16 @@ class App:
                     case["status"] = "attended"
                 self.store.save()
                 return dict(health_view(profile), visit=visit)
+            if path == "/api/plans" and method == "GET":
+                profile = self.store.data["profile"]
+                saved = profile.get("plan_compare")
+                return dict(needs=NEEDS, suggested=suggested_needs(profile), saved=saved,
+                            result=compare_plans(saved) if saved else None)
+            if path == "/api/plans/compare" and method == "POST":
+                result = compare_plans(body)
+                self.store.data["profile"]["plan_compare"] = {"needs": body.get("needs"), "plans": body.get("plans")}
+                self.store.save()
+                return dict(result=result)
             if path == "/api/profile/todo" and method == "POST":
                 done = self.store.data["profile"].setdefault("done", {})
                 ident = text(body.get("id"), 200)
