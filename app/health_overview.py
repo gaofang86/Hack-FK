@@ -15,6 +15,7 @@ import re
 from datetime import date
 
 from .health import age, todos, better_choices
+from .lab_guide import explain as lab_guide
 from .sbc import describe
 from .scenarios import NEEDS, SOURCES as PLAN_SOURCES, CHECKED as PLAN_CHECKED
 
@@ -63,7 +64,7 @@ def report_digest(rows):
             "low": sum(r["flag"] == "Low" for r in flagged), "high": sum(r["flag"] == "High" for r in flagged),
             "flagged": [{"name": r.get("name", ""), "result": r.get("result", ""), "reference": r.get("reference", ""),
                          "flag": r["flag"], "position": _position(r.get("result"), r.get("reference"))} for r in flagged],
-            "note": FLAG_NOTE}
+            "note": FLAG_NOTE, "guide": lab_guide(rows)}
 
 
 def _report_summary(report):

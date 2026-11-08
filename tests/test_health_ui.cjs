@@ -64,13 +64,18 @@ test('the shared report review screen saves My health reports to My health',()=>
 test('a saved report opens to an at-a-glance summary before its full results, and visits are listed',()=>{
  const o=overview();
  o.overview.reports=[{id:'r1',label:'firstvisit-lab-demo.pdf',reviewed_on:'2026-11-08',rows:2,flagged:1,
-  digest:{total:2,not_flagged:1,low:1,high:0,note:'n',flagged:[{name:'Creatinine',result:'0.52 mg/dL',reference:'0.57-1.00',flag:'Low',position:{low:'0.57',high:'1.00',pct:19.2}}]},
+  digest:{total:2,not_flagged:1,low:1,high:0,note:'n',flagged:[{name:'Creatinine',result:'0.52 mg/dL',reference:'0.57-1.00',flag:'Low',position:{low:'0.57',high:'1.00',pct:19.2}}],
+   guide:{headline:'1 of 2 results are within the report’s ranges.',level:'routine',next_step:'Bring it up at your next routine visit.',red_flags:'Get help now (call 911)',general:'General guidance',
+    cards:[{title:'Creatinine',result:'0.52 mg/dL',flag:'Low',status:'slightly below the lab’s range',what:'A waste product from muscles.',linked:'Often linked to less muscle mass.',level:'routine',when:'Next routine visit.',steps:['Eat enough protein.'],source:'https://medlineplus.gov/lab-tests/creatinine-test/'}],
+    others:[{name:'Glucose',what:'Sugar in your blood.',source:'https://medlineplus.gov/lab-tests/blood-glucose-test/'}]}},
   results:[{name:'Glucose',result:'98 mg/dL',reference:'70-99',flag:''},{name:'<b>Creatinine</b>',result:'0.52 mg/dL',reference:'0.57-1.00',flag:'Low'}]}];
  o.overview.visit_history=[{date:'2026-11-02',reason:'SYNTHETIC checkup',place:'Clinic',notes:'',added:{follow_ups:['Recheck']}}];
  const {c,app}=fixture(o);c.renderHealth();const html=app.innerHTML;
- assert.ok(html.indexOf('At a glance')>0&&html.indexOf('At a glance')<html.indexOf('report-table'));
+ assert.ok(html.indexOf('What your report says')<html.indexOf('report-table'));
+ assert.ok(html.includes('Often linked to less muscle mass.')&&html.includes('Eat enough protein.')&&html.includes('Get help now (call 911)'));
+ assert.ok(html.includes('What your other 1 results check')&&html.includes('creatinine-test/'));
  assert.ok(html.includes('range-dot at-20'));assert.ok(html.includes('1 Low · 0 High'));
- assert.ok(html.indexOf('&lt;b&gt;Creatinine')<html.indexOf('Glucose'));  // flagged first, escaped
+ const table=html.slice(html.indexOf('report-table'));assert.ok(table.indexOf('&lt;b&gt;Creatinine')<table.indexOf('Glucose'));  // flagged first, escaped
  assert.ok(!html.includes('<b>Creatinine'));
  assert.ok(html.includes('SYNTHETIC checkup')&&html.includes('Added: Recheck'));
 });
