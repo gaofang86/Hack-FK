@@ -8,10 +8,11 @@ confirmed. Unknown costs are never $0.
 Entry points (kind ids kept for saved-task compatibility):
   first_visit -> A. I'm new here — set me up
   concern     -> B. Something's wrong — where do I go?
-  follow_up   -> C. A clinician told me to… (P3: still the existing flow)
+  follow_up   -> C. A clinician told me to do something, or I got results (legacy 'report' too)
   insurance   -> D. Figure out my insurance
 """
 import re
+from datetime import date
 
 from .catalog import REAL, BROOKLINE, SOURCES_CHECKED
 from .benefits import clean_plan
@@ -22,7 +23,7 @@ from .expect import SOURCES as EXPECT_SOURCES
 
 COVERAGES = ('insured', 'uninsured', 'choosing', 'not_sure')
 LANGUAGES = ('English', 'Chinese', 'Spanish')
-CARD_KINDS = ('first_visit', 'concern', 'insurance')  # P1 A/D, P2 B; follow_up (C) keeps the existing task page
+CARD_KINDS = ('first_visit', 'concern', 'follow_up', 'report', 'insurance')  # 'report' is the legacy id for C
 _NUSHP = re.compile(r'nushp|northeastern', re.I)
 
 
@@ -439,6 +440,120 @@ def sick(m, profile, safety):
                 actions=actions)
 
 
+# ---- C. A clinician told me to do something, or I got results -------------------------------
+# Only what the person entered and report rows they reviewed. A lab flag is quoted, never
+# interpreted; questions go to the clinician. Due dates become to-dos on My health.
+
+FOLLOW_STAGES = [T('你手里有什么', 'What you have'), T('它说了什么（只列事实）', 'What it says (facts only)'),
+                 T('问谁、问什么', 'Who to ask and what'), T('记录结果', 'Record the outcome')]
+FOLLOW_TYPES = ('follow_up', 'refill', 'results')
+
+
+def clean_followup(raw, has_reports=False):
+    kind = raw.get('type')
+    if kind not in FOLLOW_TYPES:
+        raise ValueError('Choose a follow-up, a refill or results')
+    what = str(raw.get('what') or '').strip()[:160]
+    who = str(raw.get('who') or '').strip()[:120]
+    due = str(raw.get('due') or '').strip()[:10]
+    if due:
+        try:
+            due = date.fromisoformat(due).isoformat()
+        except ValueError:
+            raise ValueError('Use a valid date')
+    if not what and not (kind == 'results' and has_reports):
+        raise ValueError({'follow_up': 'Say what the clinician asked for', 'refill': 'Add the medicine name',
+                          'results': 'Say which results, or add the lab PDF'}[kind])
+    return dict(type=kind, what=what, who=who, due=due)
+
+
+def add_todo(profile, f):
+    """A dated follow-up or refill becomes a to-do on My health (health.todos)."""
+    if not f.get('due') or not f.get('what'):
+        return
+    if f['type'] == 'refill':
+        meds = profile.setdefault('medications', [])
+        if f['what'] not in meds:
+            meds.append(f['what'])
+        profile.setdefault('refills', {})[f['what']] = f['due']
+    elif f['type'] == 'follow_up':
+        ups = [u for u in profile.get('follow_ups') or [] if u.get('what') != f['what']]
+        profile['follow_ups'] = ups + [{'what': f['what'], 'due': f['due']}]
+
+
+def follow(m, profile, f, reports):
+    cov, plan = m['coverage'], m['plan'] or None
+    facts = [dict(name=r['name'], result=r['result'], reference=r['reference'], flag=r['flag'], label=rep['label'])
+             for rep in reports for r in rep['rows']]
+    report_ids = [rep['id'] for rep in reports]
+    edit = dict(id='followup-edit', label=T('修改我手里的事', 'Edit what I have'), primary=False)
+    if not f:
+        return dict(stages=FOLLOW_STAGES, stage=0,
+                    headline=T('医生让你做什么，或者你拿到了什么结果？', 'What did your clinician ask you to do, or what results do you have?'),
+                    why=[dict(text=T('先写下原话和期限；这里不解释结果，也不安排检查。', 'Start with their words and the deadline; this page never interprets results or orders tests.'), source=None)],
+                    cost=[T('写下之后再算', 'Once you tell us')],
+                    do_now=dict(text=T('选一类，写一句话。有化验单可以加 PDF。', 'Pick one and write a sentence. Add the lab PDF if you have one.'), script='', gloss=None),
+                    unknown=[], then=T('之后：该问谁、问什么', 'Next: who to ask and what'),
+                    clinics=[], calls=[], followup_form=True, report_upload=True, facts=facts, report_ids=report_ids, actions=[])
+    what, who, due = f['what'], f['who'], f['due']
+    who_en, who_zh = who or 'your clinician’s office', who or '医生的诊所'
+    by_en, by_zh = (f' by {due}', f'（{due} 前）') if due else ('', '')
+    s = ((profile.get('plan_benefits') or {}).get('services') or {}) if m['sbc'] else {}
+    flagged = [x for x in facts if x['flag']]
+    if f['type'] == 'refill':
+        lead = T(f'在{by_zh or "用完前"}续上 {what}', f'Refill {what}{by_en or " before it runs out"}')
+        tail = {'insured': T(f'：找药房或开药医生；{"仿制药 " + describe(s.get("generic", {})) if m["sbc"] else "问你计划的药品自付"}。',
+                             f': ask your pharmacy or prescriber; {"generic drugs are " + describe(s.get("generic", {})) if m["sbc"] else "ask what your plan charges for it"}.'),
+                'uninsured': T('：问药房现金价，以及有没有折扣。', ': ask the pharmacy for the cash price and any discount.'),
+                'choosing': T('：先按现金价续上，新计划生效前别断药。', ': pay the cash price for now so you don’t run out before a new plan starts.'),
+                'not_sure': T('：先确认你的保险，它决定药价。', ': confirm your coverage first; it decides the price.')}[cov]
+        script = f'Hi, I need a refill of {what}. Is a new prescription needed, and what will it cost me{" with " + plan if plan else ""}?'
+        cost = [T(f'仿制药：{describe(s.get("generic", {}))}（SBC）', f'Generic drugs: {describe(s.get("generic", {}))} (SBC)')] if m['sbc'] else \
+            [T('药价：未知，不按 0 计算，问药房', 'Drug price: unknown, not $0; ask the pharmacy')]
+    else:
+        if f['type'] == 'results':
+            n = len(facts)
+            lead = T(f'请 {who_zh} 解释你的结果' + (f'（已核对 {n} 项，{len(flagged)} 项有化验单标记）' if n else f'：{what}'),
+                     f'Ask {who_en} what your results mean for you' + (f' ({n} reviewed, {len(flagged)} marked by the lab)' if n else f': {what}'))
+        else:
+            lead = T(f'你的随访「{what}」{by_zh}：联系{who_zh}', f'Your follow-up ({what}){by_en}: contact {who_en}')
+        tail = {'insured': T(f'；在{plan or "你的计划"}下复诊可能需要转诊。', f'; a follow-up visit under {plan or "your plan"} may need a referral.'),
+                'uninsured': T('；如需复诊，先问自费价。', '; ask the self-pay price before any follow-up visit.'),
+                'choosing': T('；新计划未必赶得上复诊，也问一下自费价。', '; a new plan may not start in time for a follow-up, so ask the self-pay price.'),
+                'not_sure': T('；预约复诊前先确认你的保险。', '; confirm your coverage before booking a follow-up visit.')}[cov] if f['type'] == 'results' else \
+               {'insured': T(f'，问在{plan or "你的计划"}下需不需要转诊。', f' and ask whether it needs a referral under {plan or "your plan"}.'),
+                'uninsured': T('，预约前先问自费价和减免。', ' and ask the self-pay price and assistance before booking.'),
+                'choosing': T('；新计划未必来得及生效，也问一下自费价。', '; a new plan may not start in time, so ask the self-pay price too.'),
+                'not_sure': T('；预约前先确认你的保险。', '; confirm your coverage before booking.')}[cov]
+        if f['type'] == 'results':
+            script = 'Could you explain my recent results in my context, and tell me whether any follow-up is needed?'
+        else:
+            script = f'Hi, my clinician asked me to {what}{by_en}. Can I schedule it, and do I need a referral{" under " + plan if plan else ""}?'
+        cost = [T(f'随访就诊：{describe(s.get("primary", {}))}（SBC）', f'Follow-up visit: {describe(s.get("primary", {}))} (SBC)')] if m['sbc'] else \
+            [T('就诊费用：未知，不按 0 计算；检查和化验可能另外收费', 'Visit cost: unknown, not $0; tests and labs may be billed separately')]
+    headline = (lead[0] + tail[0], lead[1] + tail[1])
+    why = [dict(text=T(f'你写的：{what}', f'You wrote: {what}'), source=None)] if what else []
+    if facts:
+        why.append(dict(text=T('化验单的标记是原文，不是诊断；只有医生能结合你的情况解释。', 'Lab flags are quoted from the report, not a diagnosis; only a clinician can explain them for you.'), source=None))
+    unknown = []
+    if f['type'] != 'refill':
+        unknown.append(T('需不需要转诊或事先授权：问诊所或保险', 'Whether a referral or prior authorization is needed: ask the office or your insurer'))
+    if not m['sbc']:
+        unknown.append(T('你要付多少：问清楚再预约', 'What you’ll pay: ask before booking'))
+    questions = [T(f'化验单把「{x["name"]}」标为 {x["flag"]}：这对我意味着什么？需要做什么吗？', f'My report marks {x["name"]} as {x["flag"]}: what does that mean for me, and is anything needed?') for x in flagged[:3]]
+    actions = [edit]
+    if cov in ('not_sure', 'choosing'):
+        actions.insert(0, dict(id='go-insurance', label=T('弄懂我的保险', 'Figure out my insurance'), primary=False))
+    actions.append(dict(id='record-visit', label=T('记录这次就诊', 'Record the visit'), primary=False))
+    return dict(stages=FOLLOW_STAGES, stage=2, headline=headline, why=why, cost=cost,
+                do_now=dict(text=T(f'打给{who_zh}，说这段话。', f'Call {who_en} and say this.'), script=script,
+                            gloss=T('意思：说明医生的要求，问怎么预约、要不要转诊、要付多少。', 'Explain the request; ask how to book, referral, and cost.')),
+                unknown=unknown, questions=questions,
+                then=T('就诊后：记录医生说了什么，新的随访会进待办', 'After the visit: record what was said; new follow-ups become to-dos'),
+                clinics=[], calls=[], report_upload=True, facts=facts, report_ids=report_ids,
+                todo=bool(due and what and f['type'] != 'results'), actions=actions)
+
+
 # ---- entry ---------------------------------------------------------------------------------
 
 def card(kind, profile, case=None):
@@ -449,6 +564,8 @@ def card(kind, profile, case=None):
         body = settle(m, profile)
     elif kind == 'concern':
         body = sick(m, profile, (case or {}).get('safety'))
+    elif kind in ('follow_up', 'report'):
+        body = follow(m, profile, (case or {}).get('followup'), (case or {}).get('reports') or [])
     else:
         body = insurance(m, profile)
     return dict(body, kind=kind, coverage=m['coverage'])

@@ -82,9 +82,11 @@ class App:
         return case
 
     @staticmethod
-    def answer_for(case, notice, profile):
+    def answer_for(case, notice, profile, attached=()):
         if 'input' in case:
             return None
+        if case.get('kind') in ('follow_up', 'report') and notice['level'] != 'emergency':
+            return answers.view(case['kind'], profile, dict(case, reports=list(attached)))
         if case.get('kind') == 'concern':
             # B: a warning in the goal wording counts as the safety result until the person checks.
             safety = case.get('safety') or (notice if notice['level'] in ('emergency', 'same_day') else None)
@@ -99,7 +101,7 @@ class App:
         return dict(case, reports=attached, safety_notice=notice if notice['level'] in ('emergency', 'same_day') else None, personal_preparation=journeys.preparation(case, attached, profile),
                     preparation_view={lang: journeys.localized(sections, lang) for lang in ('en', 'zh')}, coverage_situation=journeys.coverage_situation(case, profile),
                     suggested_coverage=journeys.suggested_coverage(case), me=answers.me(profile),
-                    answer=self.answer_for(case, notice, profile),
+                    answer=self.answer_for(case, notice, profile, attached),
                     next_action=next_action(case, ranked(case)) if 'input' in case else journeys.next_step(case))
 
     def dispatch(self, method, path, body, query):
@@ -166,6 +168,14 @@ class App:
                 if not goal:
                     raise ValueError('Add your goal')
                 case['goal'] = goal
+                self.store.save()
+                return self.journey_view(case)
+            if path == '/api/journey/followup' and method == 'POST':
+                # C: what the clinician asked for, in the person's words. A dated item becomes a to-do.
+                case = self.get_journey(body.get('id'))
+                case['followup'] = answers.clean_followup(body, bool(case.get('report_ids')))
+                answers.add_todo(self.store.data['profile'], case['followup'])
+                stamp_sources(self.store.data['profile'])
                 self.store.save()
                 return self.journey_view(case)
             if path == '/api/journey/safety' and method == 'POST':

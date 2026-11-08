@@ -1,6 +1,6 @@
 """RESTRUCTURE.md §6: same entry, one parameter changed -> a visibly different answer.
 
-Rows A (first_visit) and D (insurance) are P1, row B (concern) is P2. C keeps the existing task page for now.
+Rows A (first_visit) and D (insurance) are P1, row B (concern) is P2, row C (follow_up) is P3.
 """
 from pathlib import Path
 import re
@@ -70,8 +70,59 @@ class MatrixTests(unittest.TestCase):
         v = answers.view('insurance', dict(PROFILES['choosing'], plan_compare=compare))['en']
         self.assertIn('Can’t rank yet', v['headline'])
 
-    def test_c_is_not_a_card_yet(self):
-        self.assertIsNone(answers.view('follow_up', {}))
+    def test_every_entry_has_a_card(self):
+        for kind in ('first_visit', 'concern', 'follow_up', 'report', 'insurance'):
+            self.assertIsNotNone(answers.view(kind, {}), kind)
+        self.assertIsNone(answers.view('general', {}))
+
+
+REPORT = [{'id': 'r1', 'label': 'SYNTHETIC lab', 'rows': [
+    {'name': 'SYNTHETIC Marker', 'result': '12 mg/dL', 'reference': '1-10', 'flag': 'High'},
+    {'name': 'SYNTHETIC Other', 'result': '3', 'reference': '1-5', 'flag': ''}]}]
+FOLLOWS = {'follow_up': {'type': 'follow_up', 'what': 'come back for a blood test', 'who': 'Dr. SYNTHETIC', 'due': '2026-12-01'},
+           'refill': {'type': 'refill', 'what': 'SYNTHETIC-mycin', 'who': '', 'due': '2026-11-20'},
+           'results': {'type': 'results', 'what': '', 'who': '', 'due': ''}}
+
+
+class RowCTests(unittest.TestCase):
+    def c(self, profile, f, reports=()):
+        return answers.view('follow_up', profile, {'followup': f, 'reports': list(reports)})['en']
+
+    def test_starts_by_asking_what_you_have(self):
+        v = self.c({}, None)
+        self.assertTrue(v['followup_form']); self.assertTrue(v['report_upload']); self.assertEqual(v['stage'], 0)
+
+    def test_each_type_changes_with_coverage(self):
+        for name, f in FOLLOWS.items():
+            heads = {cov: self.c(p, f, REPORT)['headline'] for cov, p in PROFILES.items()}
+            self.assertEqual(len(set(heads.values())), 4, (name, heads))
+            self.assertFalse(any('$0' in h for h in heads.values()), heads)
+
+    def test_results_quote_flags_without_interpreting(self):
+        v = self.c(PROFILES['insured'], FOLLOWS['results'], REPORT)
+        self.assertIn('2 reviewed, 1 marked by the lab', v['headline'])
+        self.assertEqual([x['flag'] for x in v['facts']], ['High', ''])
+        self.assertEqual(len(v['questions']), 1); self.assertIn('marks SYNTHETIC Marker as High', v['questions'][0])
+        text = str(v).lower()
+        for word in ('abnormal', 'you have ', 'normal range'):
+            self.assertNotIn(word, text)
+
+    def test_sbc_lines_used_for_refill_and_visit(self):
+        sbc = dict(SBC, services=dict(SBC['services'], generic={'kind': 'copay', 'amount': 10}))
+        p = {'insurance': 'yes', 'plan': {'name': 'SYNTHETIC PPO'}, 'plan_benefits': sbc}
+        self.assertIn('$10.00 copay', self.c(p, FOLLOWS['refill'])['headline'])
+        self.assertIn('$25.00 copay', self.c(p, FOLLOWS['follow_up'])['cost'][0])
+
+    def test_clean_followup_and_todos(self):
+        with self.assertRaises(ValueError):
+            answers.clean_followup({'type': 'follow_up', 'what': ''})
+        with self.assertRaises(ValueError):
+            answers.clean_followup({'type': 'refill', 'what': 'x', 'due': '12/01'})
+        self.assertEqual(answers.clean_followup({'type': 'results'}, has_reports=True)['type'], 'results')
+        profile = {'follow_ups': [{'what': 'come back for a blood test', 'due': '2026-01-01'}]}
+        answers.add_todo(profile, FOLLOWS['follow_up']); answers.add_todo(profile, FOLLOWS['refill'])
+        self.assertEqual(profile['follow_ups'], [{'what': 'come back for a blood test', 'due': '2026-12-01'}])  # updated, not duplicated
+        self.assertEqual(profile['refills'], {'SYNTHETIC-mycin': '2026-11-20'}); self.assertIn('SYNTHETIC-mycin', profile['medications'])
 
 
 def safety(*checks, description=''):
@@ -171,6 +222,16 @@ class ApiTests(unittest.TestCase):
     def test_b_goal_warning_shows_the_emergency_card(self):
         j = self.post('/api/journeys', kind='concern', goal='I have chest pain')
         self.assertIn('Call 911', j['answer']['en']['headline']); self.assertIn('tel:911', [c['href'] for c in j['answer']['en']['calls']])
+
+    def test_c_followup_feeds_my_health_todos(self):
+        j = self.post('/api/journeys', kind='follow_up', goal='SYNTHETIC')
+        self.assertTrue(j['answer']['en']['followup_form'])
+        from datetime import date, timedelta
+        due = (date.today() + timedelta(days=10)).isoformat()
+        j = self.post('/api/journey/followup', id=j['id'], type='follow_up', what='SYNTHETIC recheck', due=due)
+        self.assertIn('SYNTHETIC recheck', j['answer']['en']['headline']); self.assertEqual(j['answer']['en']['stage'], 2)
+        todos = self.app.dispatch('GET', '/api/profile', {}, {})['todos']
+        self.assertIn('SYNTHETIC recheck', [t['title'] for t in todos])
 
     def test_emergency_goal_gets_no_cost_card(self):
         j = self.post('/api/journeys', kind='first_visit', goal='I have chest pain')
