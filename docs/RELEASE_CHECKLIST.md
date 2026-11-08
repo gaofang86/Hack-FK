@@ -6,7 +6,7 @@ Use PLAN.md acceptance criteria and verification reports. A prepared document is
 
 - Run `python3 -m unittest discover -q`, `python3 scripts/audit_egress.py`, `node --check static/app.js`.
 - Run `python3 scripts/verify_privacy.py --out verification/privacy-receiver.json` for separate-process receiver observation.
-- Run `python3 scripts/verify_ollama.py --out verification/ollama.json` with Ollama running (Wi-Fi off to record no network route).
+- Run `python3 scripts/verify_ollama.py --out verification/ollama.json` with Ollama running (Wi-Fi off to record that the internet was unreachable).
 - Run `python3 scripts/verify_install.py` for a fresh temporary source copy, venv, dependency install, tests and checks. It needs package download access and local listener permission.
 - Browser rehearsal: real-source NEU scenario, external candidate, answer, quote, saved recovery, unavailable candidate, offline preparation and privacy self-check. Use fictional personal data.
 

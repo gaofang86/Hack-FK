@@ -186,7 +186,7 @@ Reproducible acceptance checks (use only synthetic data):
 ```sh
 python3 scripts/verify_privacy.py --out verification/privacy-receiver.json
 python3 scripts/verify_install.py
-python3 scripts/verify_ollama.py --out verification/ollama.json   # needs Ollama running; run with Wi-Fi off to record no network route
+python3 scripts/verify_ollama.py --out verification/ollama.json   # needs Ollama running; run with Wi-Fi off to record that the internet was unreachable
 ```
 
 The first observes a separate test app process using a controlled loopback receiver. The second downloads requirements into a fresh temporary virtual environment and runs tests, the import audit, JS syntax and receiver checks. Reports are under `verification/`; neither validates real API keys, exact physician participation or production network isolation.

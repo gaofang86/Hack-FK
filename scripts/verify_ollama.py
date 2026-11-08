@@ -5,14 +5,14 @@ Checks: loopback-only model endpoint, Chinese translation of the fixed call scri
 from the real installed model (private history is not sent to the model),
 use with the app's offline switch on, labeled template fallback when the model is
 unreachable, and unchanged cost comparison / no outbound requests during drafting.
-Run it with Wi-Fi off to also record that no default network route existed.
+Run it with Wi-Fi off to also record that the internet was unreachable.
 """
 import argparse
 from datetime import date
 import json
 from pathlib import Path
 import re
-import subprocess
+import socket
 import sys
 import tempfile
 
@@ -25,12 +25,13 @@ from app.server import App  # noqa: E402
 PRIVATE = 'SYNTHETIC PRIVATE HISTORY SENTINEL'
 
 
-def has_default_route():
-    """macOS/Linux: inspects the local routing table only; sends nothing."""
+def internet_reachable():
+    """Run by this script, not the app: one TCP connect attempt to a public resolver."""
     try:
-        return subprocess.run(['route', '-n', 'get', 'default'], capture_output=True, timeout=5).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return None
+        socket.create_connection(('1.1.1.1', 443), timeout=3).close()
+        return True
+    except OSError:
+        return False
 
 
 def new_case(app):
@@ -89,7 +90,7 @@ def main():
               'scope': 'Real local Ollama model called by the app in-process. Not a clinical review of draft content.',
               'model': cfg.ollama_model, 'loopback_only': True, 'non_loopback_endpoint_refused': True,
               'chinese_characters_in_draft': chinese, 'app_offline_mode_on': True,
-              'default_network_route_present': has_default_route(),
+              'internet_reachable_during_check': internet_reachable(),
               'private_history_sent_to_model': False, 'comparison_unchanged_by_model': True, 'gateway_requests_during_draft': 0,
               'unreachable_model_fell_back_to_labeled_template': True,
               'draft_excerpt': draft['text'][:240]}
