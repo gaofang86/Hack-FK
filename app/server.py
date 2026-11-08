@@ -22,6 +22,7 @@ from .scenarios import NEEDS, compare_plans, guidance, suggested_needs
 from .sbc import plan_for, read_upload, to_plan
 from .sources import describe_all
 from .student_plan import reference as student_reference
+from . import explain
 from .benefits import clean_plan as _clean_plan
 from .navigation import SERVICES, confirmation_tasks, clean_input, from_search, ranked, safety_check, text, update_quote
 from .triage import checks_view, symptom_terms
@@ -94,6 +95,9 @@ class App:
                 self.report_previews.clear()
             if path == "/api/state" and method == "GET":
                 return self.state()
+            if path == "/api/explain/coverage" and method == "POST":
+                case = self.get_journey(body.get("journey_id", ""))
+                return explain.explain_coverage(self.model, case, self.store.data.get("profile", {}), "zh" if body.get("lang") == "zh" else "en")
             if path == "/api/directory" and method == "GET":
                 # Public sourced directory, matched locally; works locked and offline, nothing leaves the device.
                 return dict(results=directory_search(query.get("q", [""])[0][:120]),

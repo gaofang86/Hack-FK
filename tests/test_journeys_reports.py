@@ -174,3 +174,37 @@ class ScenarioConsistencyTests(JourneyTests):
         from app.scenarios import insured
         self.assertNotIn('Checkups and screenings may be free', [t['title'] for t in insured({'service': 'primary_care', 'need': 'refill'})['tips']])
         self.assertIn('Checkups and screenings may be free', [t['title'] for t in insured({'service': 'primary_care', 'need': 'checkup'})['tips']])
+
+
+class ExplainCoverageTests(unittest.TestCase):
+    class FakeModel:
+        model_name = 'fake'
+        def __init__(self, text, available=True): self.text, self.available = text, available
+        def status(self): return {'available': self.available, 'reason': '' if self.available else 'off'}
+        def generate(self, prompt, system, n):
+            assert 'SYNTHETIC GOAL' not in prompt  # health/goal text never reaches the model
+            return self.text
+
+    def run_explain(self, text, available=True, lang='en'):
+        from app import explain
+        return explain.explain_coverage(self.FakeModel(text, available), {'kind': 'insurance', 'goal': 'SYNTHETIC GOAL I have student insurance'}, {}, lang)
+
+    def test_checked_model_text_is_used_and_invented_facts_fall_back(self):
+        ok = self.run_explain('You have insurance, but your benefits are not added yet, so the cost is unknown. Call the number on your card.')
+        self.assertIn('local model', ok['source'])
+        made_up = self.run_explain('Your copay is $15 and the clinic is in network confirmed.')
+        self.assertIn('rules template', made_up['source']); self.assertIn('unknown (not $0)', made_up['text'])
+        self.assertIn('rules template', self.run_explain('You probably have a diagnosis.')['source'])
+        # Real failures seen with the local model: plausible but unsupported cost claims.
+        self.assertIn('rules template', self.run_explain('You are covered, but you will likely need to pay some money out of pocket.')['source'])
+        self.assertIn('rules template', self.run_explain('您目前拥有保险，但此次就医的费用超出了您的计划覆盖范围。', lang='zh')['source'])
+        self.assertIn('rules template', self.run_explain('You have insurance. Call the number on your card.')['source'])  # omits that cost is unknown
+        off = self.run_explain('', available=False, lang='zh')
+        self.assertIn('你有保险', off['text'])
+        self.assertNotRegex(off['text'], r'[A-Za-z]{6,}')  # Chinese template is fully Chinese
+        self.assertIn('rules template', self.run_explain('您的保险计划目前处于未激活状态，费用尚未确定。', lang='zh')['source'])
+
+class ExplainCheckSanityTests(unittest.TestCase):
+    def test_forbidden_pattern_does_not_match_neutral_text(self):
+        from app import explain
+        self.assertIsNone(explain.FORBIDDEN.search('Call the number on your card and ask about the visit.'))

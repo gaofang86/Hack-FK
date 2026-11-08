@@ -259,7 +259,7 @@ function coverageStep(j){
     uninsured:['目前没有保险 / No insurance right now','接下来按自费价格比较，并准备询问减免。 / Next we compare self-pay prices and ask about financial assistance.'],
     choosing:['正在选择保险计划 / Choosing a plan','比较一年总花费：保费加上实际看病的自付部分。 / Compare the yearly total: premium plus what you pay when you use care.'],
     unknown:['还不知道你有没有保险 / We do not know your coverage yet','先回答这一步，后面的费用和问题才能对得上。 / Answer this first so costs and questions below match your situation.']}[situation]||[];
-  return `<section class="form-card coverage-step ${situation==='unknown'?'needs-answer':''}"><p class="eyebrow">第 1 步 · 保险与费用 / STEP 1 · COVERAGE & COSTS</p><h2>${esc(status[0])}</h2><p>${esc(status[1])}</p><button class="${situation==='unknown'?'primary':'secondary'}" data-action="edit-coverage">${situation==='unknown'?'回答：我有保险吗？ / Do I have insurance?':'核对或修改 / Check or change'}</button></section>`;
+  return `<section class="form-card coverage-step ${situation==='unknown'?'needs-answer':''}"><p class="eyebrow">第 1 步 · 保险与费用 / STEP 1 · COVERAGE & COSTS</p><h2>${esc(status[0])}</h2><p>${esc(status[1])}</p><button class="${situation==='unknown'?'primary':'secondary'}" data-action="edit-coverage">${situation==='unknown'?'回答：我有保险吗？ / Do I have insurance?':'核对或修改 / Check or change'}</button> <button class="text-button" data-action="explain-coverage">解释给我听 / Explain this</button><div id="coverage-explain" class="soft-note" aria-live="polite" hidden></div></section>`;
 }
 // Directions: only for a specific street address; vague or fictional locations get no link.
 const mapsUrl=p=>(!p||p.demo||!p.address||/confirm/i.test(p.address)||!/\d/.test(p.address))?'':'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(p.address);
@@ -795,6 +795,7 @@ document.addEventListener('click',event=>{
   if(action==='home-page'){if(!S.state.unlocked){S.view=S.state.vault_exists?'gate':'home';render();return;}S.view='home';S.expect=null;S.current=null;return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
   if(action==='edit-profile')return editProfile();
   if(action==='edit-coverage')return editProfile('coverage');
+  if(action==='explain-coverage')return work(async()=>{const r=await api('/api/explain/coverage',{journey_id:S.journey.id,lang:I18n.locale==='zh'?'zh':'en'});const el=$('#coverage-explain');if(!el)return;el.hidden=false;el.innerHTML=`<p data-i18n-keep>${esc(r.text)}</p><p class="hint" data-i18n-keep>${esc(r.source)}</p>`;},'Explaining on this device…');
   if(action==='mode-need'||action==='mode-doctor'){S.homeMode=action==='mode-doctor'?'doctor':'need';render();if(S.homeMode==='doctor')$('#doctor-query')?.focus();return;}
   if(action==='doctor-search')return openDoctorSearch();
   if(action==='plans')return work(openPlans);
