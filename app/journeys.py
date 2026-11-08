@@ -3,8 +3,8 @@ import time
 from .navigation import text
 
 KINDS = {'general': '一起理清下一步 / Help me get started',
-         'first_visit': '主动照顾健康 / Stay healthy', 'concern': '获得就医帮助 / Get care',
-         'follow_up': '跟进已有照护 / Manage my care', 'insurance': '理清保险与费用 / Insurance & costs',
+         'first_visit': '我刚来，先安顿好 / I’m new here — set me up', 'concern': '现在不舒服，该去哪 / Something’s wrong — where do I go?',
+         'follow_up': '医生让我做件事，或拿到了结果 / A clinician told me to do something, or I got results', 'insurance': '弄懂我的保险 / Figure out my insurance',
          'report': '我想讨论检查结果 / Discuss test results'}
 
 
@@ -45,6 +45,12 @@ def coverage_situation(case, profile=None):
         return 'insured'
     if profile.get('insurance') == 'no':
         return 'choosing' if profile.get('wants_insurance') else 'uninsured'
+    # Goal wording is only a suggestion (suggested_coverage): "I think I have insurance" is not
+    # a confirmed answer, so it never shows as settled (RESTRUCTURE.md §4).
+    return 'unknown'
+
+
+def suggested_coverage(case):
     goal = case.get('goal', '')
     if _CHOOSING.search(goal):
         return 'choosing'
@@ -52,7 +58,7 @@ def coverage_situation(case, profile=None):
         return 'uninsured'
     if _INSURED.search(goal):
         return 'insured'
-    return 'unknown'
+    return None
 
 
 def _section(title, *items):

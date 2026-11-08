@@ -2,13 +2,15 @@ const assert=require('node:assert/strict'),test=require('node:test'),fs=require(
 const src=fs.readFileSync(path.join(__dirname,'../static/app.js'),'utf8');
 const line=src.split('\n').find(l=>l.trim().startsWith("if(action==='journey-find')"));
 function findCare(journey,profile={}){
- const c={action:'journey-find',S:{journey,health:{profile}},render(){},toast(){},window:{scrollTo(){}},
+ const c={action:'journey-find',S:{journey,health:{profile}},render(){},toast(){},window:{scrollTo(){}},work(){c.S.skippedNeedStep=true;},
   fromProfile:()=>({service:'primary_care',insurance:profile.insurance||'',wants_insurance:false,need:'',checks:[],description:'',feel:''})};
  vm.runInNewContext('(function(){'+line+'})()',c);return c.S;
 }
 test('follow-up and legacy report tasks open Find care on the follow-up need, not a blank new-patient choice',()=>{
  for(const kind of ['follow_up','report']){const S=findCare({id:'j',kind,goal:'x'});assert.equal(S.sub,'need');assert.equal(S.input.need,'follow_up');assert.equal(S.input.service,'follow_up');}
  const S=findCare({id:'j',kind:'first_visit',goal:'x'});assert.equal(S.input.need,'checkup');assert.equal(S.input.service,'primary_care');assert.equal(JSON.stringify(S.input.checks),'["checkup"]');
+ assert.equal(S.skippedNeedStep,true); // entry A already said what it needs: no second "What do you need?"
+ assert.notEqual(findCare({id:'j',kind:'first_visit',goal:'chest pain',safety_notice:{level:'emergency'}}).skippedNeedStep,true);
 });
 test('concern tasks still start at the symptom and safety check',()=>{
  const S=findCare({id:'j',kind:'concern',goal:'x'});assert.equal(S.sub,'symptoms');assert.equal(S.input.none_reported,false);

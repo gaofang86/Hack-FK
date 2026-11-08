@@ -9,7 +9,7 @@ import threading
 import time
 from urllib.parse import parse_qs, urlparse
 
-from . import journeys, reports
+from . import answers, journeys, reports
 from .agent import CareAgent
 from .benefits import clean_plan, number
 from .catalog import candidates, directory_search
@@ -55,11 +55,13 @@ class App:
             for c in self.store.data['cases'].values():
                 if 'input' not in c:
                     summaries.append(dict(id=c['id'], city='', service=journeys.KINDS.get(c.get('kind'), 'Care task'),
-                                          created=c['created'], demo=False, status=c['status'], kind=c.get('kind'), next_action=journeys.next_step(c)))
+                                          created=c['created'], demo=False, status=c['status'], kind=c.get('kind'),
+                                          next_action=(c.get('status') != 'attended' and answers.next_line(c.get('kind'), self.store.data['profile'])) or journeys.next_step(c)))
         return dict(unlocked=self.store.unlocked, vault_exists=self.store.exists(), offline=self.egress.offline,
                     preview_mode=getattr(self, "preview_mode", False),
                     services=self.cfg.services(), cases=sorted(summaries, key=lambda c: -c["created"]), today=date.today().isoformat(),
-                    profile_ready=bool(self.store.unlocked and self.store.data["profile"].get("birth_year")))
+                    profile_ready=bool(self.store.unlocked and self.store.data["profile"].get("birth_year")),
+                    me=answers.me(self.store.data["profile"]) if self.store.unlocked else None)
 
     def get_case(self, ident):
         case = self.store.require()["cases"].get(ident)
@@ -86,6 +88,8 @@ class App:
         sections = journeys.preparation_sections(case, attached, profile)
         return dict(case, reports=attached, safety_notice=notice if notice['level'] in ('emergency', 'same_day') else None, personal_preparation=journeys.preparation(case, attached, profile),
                     preparation_view={lang: journeys.localized(sections, lang) for lang in ('en', 'zh')}, coverage_situation=journeys.coverage_situation(case, profile),
+                    suggested_coverage=journeys.suggested_coverage(case), me=answers.me(profile),
+                    answer=None if 'input' in case or notice['level'] == 'emergency' else answers.view(case.get('kind'), profile),
                     next_action=next_action(case, ranked(case)) if 'input' in case else journeys.next_step(case))
 
     def dispatch(self, method, path, body, query):
@@ -202,6 +206,19 @@ class App:
                 stamp_sources(profile, "User-reviewed profile")
                 self.store.save()
                 return health_view(profile)
+            if path == "/api/me" and method == "POST":
+                # Shared parameters only (coverage, plan name, ZIP, language); asked once, used by every entry.
+                profile = self.store.data["profile"]
+                result = answers.apply_me(profile, body)
+                stamp_sources(profile)
+                for key in profile["fact_sources"]:
+                    if key.startswith(("language:", "plan:")):
+                        profile["fact_sources"][key] = {"source": "User-reviewed situation", "reviewed_on": date.today().isoformat()}
+                self.store.save()
+                out = dict(me=result, health=health_view(profile))
+                if body.get("journey_id"):
+                    out["journey"] = self.journey_view(self.get_journey(body["journey_id"]))
+                return out
             if path == "/api/visit" and method == "POST":
                 profile = self.store.data["profile"]
                 body = dict(body, id=secrets.token_hex(6))

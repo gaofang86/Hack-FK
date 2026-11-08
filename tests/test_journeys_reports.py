@@ -119,13 +119,17 @@ class CoveragePreparationTests(unittest.TestCase):
         return journeys.coverage_situation(case, profile), journeys.localized(secs, 'en'), journeys.localized(secs, 'zh')
 
     def test_goal_wording_and_profile_choose_the_branch(self):
-        situation, en, _ = self.sections('i have student insurance but I am not sure how to use it.')
-        self.assertEqual(situation, 'insured')
+        from app.journeys import suggested_coverage
+        # Wording alone is a suggestion, never a settled answer ("I think I have insurance").
+        self.assertEqual(self.sections('i have student insurance but I am not sure how to use it.')[0], 'unknown')
+        self.assertEqual(suggested_coverage({'goal': 'i have student insurance but I am not sure how to use it.'}), 'insured')
+        self.assertEqual(suggested_coverage({'goal': "I don't have insurance right now"}), 'uninsured')
+        self.assertEqual(suggested_coverage({'goal': 'Which plan should I choose?'}), 'choosing')
+        self.assertIsNone(suggested_coverage({'goal': 'I want help'}))
+        situation, en, _ = self.sections('I want help', {'insurance': 'yes'})
         text = str(en)
         self.assertIn('in network', text); self.assertNotIn('uninsured', text); self.assertNotIn('self-pay', text)
         self.assertNotIn('Questions for my clinician', text)
-        self.assertEqual(self.sections("I don't have insurance right now")[0], 'uninsured')
-        self.assertEqual(self.sections('Which plan should I choose?')[0], 'choosing')
         self.assertEqual(self.sections('I want help')[0], 'unknown')
         # Saved profile beats wording and names the plan.
         situation, en, _ = self.sections('I want help', {'insurance': 'yes', 'plan': {'name': 'SYNTHETIC PPO'}})
@@ -167,8 +171,10 @@ class ScenarioConsistencyTests(JourneyTests):
         self.assertTrue(re.search(r'[㐀-鿿]', prep['personal_note_view']['zh']))
 
     def test_goal_coverage_wording_is_exposed_for_every_task(self):
-        self.assertEqual(self.post('/api/journeys', kind='first_visit', goal='I do not have insurance')['coverage_situation'], 'uninsured')
-        self.assertEqual(self.post('/api/journeys', kind='concern', goal='I have student insurance')['coverage_situation'], 'insured')
+        j = self.post('/api/journeys', kind='first_visit', goal='I do not have insurance')
+        self.assertEqual((j['coverage_situation'], j['suggested_coverage']), ('unknown', 'uninsured'))
+        j = self.post('/api/journeys', kind='concern', goal='I have student insurance')
+        self.assertEqual((j['coverage_situation'], j['suggested_coverage']), ('unknown', 'insured'))
 
     def test_refill_is_not_told_checkups_may_be_free(self):
         from app.scenarios import insured
@@ -187,7 +193,7 @@ class ExplainCoverageTests(unittest.TestCase):
 
     def run_explain(self, text, available=True, lang='en'):
         from app import explain
-        return explain.explain_coverage(self.FakeModel(text, available), {'kind': 'insurance', 'goal': 'SYNTHETIC GOAL I have student insurance'}, {}, lang)
+        return explain.explain_coverage(self.FakeModel(text, available), {'kind': 'insurance', 'goal': 'SYNTHETIC GOAL I have student insurance'}, {'insurance': 'yes'}, lang)
 
     def test_checked_model_text_is_used_and_invented_facts_fall_back(self):
         ok = self.run_explain('You have insurance, but your benefits are not added yet, so the cost is unknown. Call the number on your card.')

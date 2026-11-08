@@ -7,8 +7,8 @@ function labels(){
 }
 test('saved tasks are labelled with the new starting-point names, plus the searched service for shortlists',()=>{
  const {caseLabel}=labels();
- assert.equal(caseLabel({kind:'first_visit',service:'主动照顾健康 / Stay healthy'}),'<span>主动照顾健康 / Stay healthy</span>');
- assert.equal(caseLabel({kind:'follow_up',service:'Follow-up visit'}),'<span>跟进已有照护 / Manage my care</span> · <span>Follow-up visit</span>');
+ assert.equal(caseLabel({kind:'first_visit',service:'我刚来，先安顿好 / I’m new here — set me up'}),'<span>我刚来，先安顿好 / I’m new here — set me up</span>');
+ assert.equal(caseLabel({kind:'follow_up',service:'Follow-up visit'}),'<span>医生让我做件事，或拿到了结果 / A clinician told me to do something, or I got results</span> · <span>Follow-up visit</span>');
  assert.equal(caseLabel({kind:null,service:'Primary care'}),'<span>Primary care</span>');
  assert.ok(!src.includes("c.demo?'· Demo'"));assert.ok(src.includes('CASE_STATUS[c.status]'));
 });

@@ -60,5 +60,6 @@ test('free text routes to a starting category; symptoms always win',()=>{
  assert.equal(inferKind('I want a regular doctor and a checkup'),'first_visit');
  assert.equal(inferKind('I have chest pain and wonder what it costs'),'concern');
  assert.equal(inferKind('我想知道看病多少钱'),'insurance');assert.equal(inferKind('我头疼'),'concern');
+ assert.equal(inferKind('I just arrived and want to find a doctor and know how much a visit costs'),'first_visit');
  assert.equal(inferKind('hello'),'');assert.equal(inferKind(''),'');
 });

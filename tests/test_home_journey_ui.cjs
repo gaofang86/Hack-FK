@@ -5,11 +5,20 @@ const helpers=src.split('\n').filter(l=>/^(const esc =)/.test(l)).join('\n');
 function fixture(supported=false){
  const c={S:{state:{unlocked:false},homeGoal:'',homeKind:null,view:'home'},window:supported?{SpeechRecognition:class{}}:{},Dictation,
   select:(label,name,options,value)=>`<select name="${name}">${options.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>`,icon:()=>''};
- vm.runInNewContext(helpers+'\n'+src.slice(src.indexOf('const JOURNEY_KINDS='),src.indexOf('function bindHome()'))+'\nglobalThis.composer=homeComposer;globalThis.prompt=homePrompt;globalThis.updatePrompt=updateHomePrompt;',c);return c;
+ vm.runInNewContext(helpers+'\n'+src.slice(src.indexOf('const JOURNEY_KINDS='),src.indexOf('function bindHome()'))+'\nglobalThis.composer=homeComposer;globalThis.confirm=kindConfirm;globalThis.prompt=homePrompt;globalThis.updatePrompt=updateHomePrompt;',c);return c;
 }
-test('homepage presents four starting points without a report or complete-profile prerequisite',()=>{
- const html=fixture().composer();for(const k of ['insurance','first_visit','concern','follow_up'])assert.ok(html.includes(`data-journey-kind="${k}"`));assert.ok(!html.includes('data-journey-kind="report"'));const order=['first_visit','concern','follow_up','insurance'].map(k=>html.indexOf(`data-journey-kind="${k}"`));assert.deepEqual([...order].sort((a,b)=>a-b),order);assert.ok(html.includes('Stay healthy')&&html.includes('Manage my care'));assert.ok(html.includes('name="kind" value="general"'));assert.ok(!html.includes('Follow through'));
+test('homepage presents four entries in the person\'s words, one text box and nothing else up front',()=>{
+ const html=fixture().composer();const order=['first_visit','concern','follow_up','insurance'].map(k=>html.indexOf(`data-start-kind="${k}"`));
+ assert.ok(order.every(i=>i>0));assert.deepEqual([...order].sort((a,b)=>a-b),order);assert.ok(!html.includes('data-start-kind="report"'));
+ assert.ok(html.includes('I’m new here — set me up')&&html.includes('Figure out my insurance'));
+ assert.ok(!html.includes('By doctor or clinic')&&!html.includes('goal-ghost')&&!html.includes('Stay healthy'));
  assert.ok(html.includes('继续已保存的任务'));assert.ok(!html.includes('dictation-button'));assert.ok(!html.includes('type="file"'));
+});
+test('free text is confirmed before entering, and an unknown guess offers the four entries',()=>{
+ const c=fixture();c.inferKind=t=>/doctor/.test(t)?'first_visit':'';
+ const yes=c.confirm('I want to find a doctor');assert.ok(yes.includes('data-confirm-kind="first_visit"'));assert.ok(yes.includes('We read this as'));
+ const pick=c.confirm('hello');for(const k of ['first_visit','concern','follow_up','insurance'])assert.ok(pick.includes(`data-confirm-kind="${k}"`));
+ assert.ok(c.confirm('<b>x</b> doctor').indexOf('<b>')<0);
 });
 test('supported browser exposes explicit modes, starts nothing and escapes the unsaved goal',()=>{
  const c=fixture(true);c.S.homeGoal='<script>private</script>';const html=c.composer();

@@ -146,7 +146,7 @@ D 另有第四列 **choosing**："Plan B costs about $X less this year for the c
 
 | 现在 | 改成 |
 |---|---|
-| `journeys.KINDS`（6 种） | `settle` / `sick` / `follow_up` / `insurance` 四种；旧 kind 读取时映射（first_visit/general→settle，concern→sick，report/follow_up→follow_up，insurance→insurance） |
+| `journeys.KINDS`（6 种） | 四个入口。**P1 实现时保留原 id**（first_visit=A，concern=B，follow_up=C，insurance=D），只改显示名，已保存任务无需迁移 |
 | `journeys.next_step()` 写死 | 删除，由新 `app/answers.py` 的 `card(scenario, me, case)` 产出 |
 | `journeys.coverage_situation()` 正则即结论 | 返回 `suggested`，确认后才写入 Me |
 | `scenarios.insured/uninsured/choosing` | 两用：D 的卡片主体；A/B/C 里按 coverage 调用的修饰函数 |
@@ -160,7 +160,7 @@ D 另有第四列 **choosing**："Plan B costs about $X less this year for the c
 
 | 阶段 | 内容 | 完成标志 |
 |---|---|---|
-| P1 | 首页四卡、Me chips、`answers.py` + 场景 A 和 D（两者共用最多保险逻辑，且是新人最早的两个问题） | 矩阵 A、D 行测试通过；A↔D 跳转不重复提问 |
+| P1 ✅ 2026-11-08 | 首页四卡、Me chips、`answers.py` + 场景 A 和 D（两者共用最多保险逻辑，且是新人最早的两个问题） | 矩阵 A、D 行测试通过；A↔D 跳转不重复提问 |
 | P2 | 场景 B，接 triage 与 urgent/ER 费用 | 矩阵 B 行；紧急时不显示价格 |
 | P3 | 场景 C，接报告与随访 | 矩阵 C 行；报告不产生结论 |
 | P4 | 清理：删 §3/§10 冲突描述、重写 README、demo 脚本改为三个人 | 新人 30 秒内能说出"这个产品替我做什么" |

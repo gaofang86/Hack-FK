@@ -56,8 +56,8 @@ function suggestCompletion(value,{kind='general',locale='en',maxLength=2000}={})
 const KIND_RULES=[
  ['concern',/\b(pain|hurts?|sick|fever|cough|symptoms?|rash|ache|aching|dizzy|bleeding|vomit|nausea|injur|swollen|bothered)\b|疼|痛|发烧|咳嗽|不舒服|症状|头晕|受伤|恶心/i],
  ['follow_up',/\b(follow[- ]?up|refill|results?|reports?|labs?|referral|come back|re-?check)\b|my doctor (asked|told|recommended|said|wants)|复诊|续药|报告|结果|转诊|医生(让|建议|说)/i],
- ['insurance',/\b(insurance|insured|copay|deductible|coinsurance|premium|bills?|costs?|price|prices|how much|afford|self-pay|pay for)\b|保险|费用|多少钱|自费|报销|保费|账单/i],
- ['first_visit',/\b(regular doctor|primary care|pcp|check-?up|physical|vaccines?|screenings?|new to|first time|family doctor)\b|家庭医生|固定医生|体检|疫苗|筛查|第一次/i]
+ ['first_visit',/\b(regular doctor|primary care|pcp|check-?up|physical|vaccines?|screenings?|new to|first time|family doctor|just (arrived|moved)|find (a |an )?(new )?doctor)\b|家庭医生|固定医生|体检|疫苗|筛查|第一次|找医生|刚来/i],
+ ['insurance',/\b(insurance|insured|copay|deductible|coinsurance|premium|bills?|costs?|price|prices|how much|afford|self-pay|pay for)\b|保险|费用|多少钱|自费|报销|保费|账单/i]
 ];
 function inferKind(text){if(typeof text!=='string'||!text.trim())return '';for(const [kind,rule] of KIND_RULES)if(rule.test(text))return kind;return '';}
 
