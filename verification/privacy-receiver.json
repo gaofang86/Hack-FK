@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "scope": "Independent receiver in parent process observes a separate app process over loopback. Not OS-wide capture or live external API validation.",
+  "synthetic_only": true,
+  "receiver_requests": 3,
+  "receiver_paths": [
+    "/search",
+    "/fail",
+    "/redirect"
+  ],
+  "private_sentinel_received": false,
+  "redirect_followed": false,
+  "offline_request_received": false,
+  "live_search": true,
+  "ledger_sent": 1,
+  "ledger_errors": 2,
+  "ledger_blocks": 4,
+  "offline_preparation": true
+}

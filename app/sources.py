@@ -66,7 +66,7 @@ class ZocdocLink:
             note = "No insurance filter. Ask each office for its self-pay price."
         return {"source": self.name, "kind": self.kind, "url": f"{BASE}?{urlencode(params)}", "shares": shares,
                 "in_network_filter": bool(plan), "note": note, "checked_on": CHECKED,
-                "how": "Opens in your browser. FirstVisit sends nothing; Zocdoc sees what’s listed here."}
+                "how": "Opening this link sends the listed search fields to Zocdoc in your browser. Its own privacy practices apply; browser traffic is outside FirstVisit’s gateway ledger."}
 
 
 SOURCES = [ZocdocLink()]

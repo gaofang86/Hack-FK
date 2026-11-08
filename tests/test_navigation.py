@@ -171,7 +171,7 @@ class WorkflowTests(unittest.TestCase):
     def test_booking_needs_confirmation(self):
         result=self.search()
         with self.assertRaises(ValueError):self.call("/api/case/contact",dict(id=result["id"],status="booked"))
-        saved=self.call("/api/case/contact",dict(id=result["id"],status="booked",reference="User called, confirmed 9am"))
+        saved=self.call("/api/case/contact",dict(id=result["id"],status="booked",provider_id=result["providers"][0]["id"],reference="User called, confirmed 9am"))
         self.assertEqual(saved["status"],"booked")
 
 

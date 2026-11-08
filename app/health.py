@@ -187,3 +187,17 @@ def view(profile, today=None):
     return {"plan_by_service": by_service, "benefits": b,"profile": {k: v for k, v in profile.items() if k != "done"}, "age": age(profile, today),
             "todos": todos(profile, today), "choices": better_choices(profile),
             "complete": bool(profile.get("birth_year"))}
+
+
+def stamp_sources(profile, source=None):
+    """Keep metadata only for currently retained facts; old profiles stay explicitly undated."""
+    old = profile.get("fact_sources", {})
+    current = {}
+    for field in ("birth_year", "sex", "language", "conditions", "allergies", "medications", "follow_ups", "plan"):
+        value = profile.get(field)
+        values = value if isinstance(value, list) else [value] if value not in (None, "") else []
+        for item in values:
+            shown = item.get("what", item.get("name", "")) if isinstance(item, dict) else str(item)
+            key = field + ":" + shown
+            current[key] = {"source": source, "reviewed_on": date.today().isoformat()} if source else old.get(key, {"source": "Older user entry", "reviewed_on": ""})
+    profile["fact_sources"] = current

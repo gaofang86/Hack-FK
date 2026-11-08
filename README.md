@@ -1,5 +1,7 @@
 # FirstVisit
 
+Product goals and acceptance criteria: [PLAN.md](PLAN.md) ([English](PLAN.en.md)). Current validation and remaining work: [STATUS.md](STATUS.md).
+
 **A private health companion for people new to US healthcare.** FirstVisit starts with you and your health. It keeps an encrypted health profile on your own computer, tells you what to do next, helps you choose where to go and what it will cost, and gets more useful after every visit.
 
 Built for Hack1984 (Privacy-First track), first for international students in Boston. This is a working prototype, not a clinical product: it never diagnoses, and every suggestion comes from fixed rules with an official source.
@@ -22,6 +24,14 @@ python3 run.py --preview
 ```
 
 Open http://127.0.0.1:8767. This uses a disposable vault that never locks itself, turns off public search, and shows a "Temporary preview" label. Use only made-up details. If you lock it, the test passphrase is `firstvisit-preview-only` (shown on the unlock page). Inside a visit, "Explore a fictional example" loads fictional Boston clinics and a fictional plan.
+
+## Student insurance scenario: NEU / 02445
+
+On home, choose **Explore NEU / 02445**, or use **Student insurance scenario** in the visit sidebar. This is the default example for an insured student, not an assertion about your own enrollment. It uses an illustrative adult in Brookline ZIP 02445 (no street address), a NUSHP plan name awaiting exact product/year confirmation, and real primary-care location sources. It does not replace your saved profile or prefill unverified benefits.
+
+The Brookline directory includes Brigham primary care at 1 Brookline Place, 02445, and BILH primary care at 1180 Beacon Street, 02446. Prices, clinician-level network, new-patient acceptance and appointment availability remain unconfirmed. No ZIP-based travel distance is invented. The scenario now shows a sourced 2026–27 reference: annual period September 1, 2026–August 31, 2027 and $3,049 student annual fee. These reference values do not populate personal premiums, active coverage or remaining balances. NEU’s linked benefit PDFs still open 2025–26 files, so current-year cost sharing remains unverified. Official directory guidance, exact-provider verification steps and NUSHP contact details are included.
+
+Results separate supported visit-cost comparisons from options needing confirmation. Each candidate has its own questions and preparation script. Save scoped quote/network answers with **Add quote / confirmation** to recalculate; record appointment outcomes separately.
 
 ## How it works
 
@@ -129,6 +139,26 @@ ollama pull qwen2.5:3b
 
 `app/bills.py` and `app/costs.py` are early drafts. They aren't connected yet.
 
+## Continue a care task
+
+- On results, **Add a provider you found** saves a candidate and exact address from a public source without fetching the URL. Service, price and network remain unconfirmed.
+- **Record office reply** records dated, sourced answers about new-patient appointments, language and referrals. Unknown answers remain open; replies over 30 days old require reconfirmation. A required referral remains a task until recorded as obtained. A negative availability reply retains the candidate as a backup, outside supported-cost comparisons.
+- **Add quote / confirmation** retains the separate service, scoped cash quote and exact-plan network controls. Cash quotes older than 30 days become unknown until reconfirmed.
+- Home shows unfinished care journeys and a concrete next question. **What we know** shows source/review dates for facts recorded since this update; older entries explicitly lack dates.
+- Privacy includes a **synthetic self-check** that exercises gateway preflight without a network call. It is not a medical-data detector or OS isolation guarantee.
+
+## Rehearsal and delivery
+
+```sh
+python3 scripts/rehearse.py
+```
+
+Open http://127.0.0.1:8767. This creates a disposable fictional profile and a real-source NEU / 02445 journey, with no search credentials. Do not run it alongside another preview using port 8767.
+
+Prepared materials: [demo script](docs/DEMO_SCRIPT.md), [submission draft](docs/DEVPOST_DRAFT.md), [user-test protocol](docs/USER_VALIDATION.md), [release checklist](docs/RELEASE_CHECKLIST.md). Interviews, recording, publication and submission are not claimed as completed.
+
+Ollama and real Tavily/Exa API acceptance are explicitly deferred in PLAN.md section 9. Template preparation, local directory and manual candidate workflows remain available.
+
 ## Tests
 
 ```sh
@@ -137,4 +167,14 @@ python3 scripts/audit_egress.py
 node --check static/app.js
 ```
 
-There are 74 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
+There are 88 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
+
+
+Reproducible acceptance checks (use only synthetic data):
+
+```sh
+python3 scripts/verify_privacy.py --out verification/privacy-receiver.json
+python3 scripts/verify_install.py
+```
+
+The first observes a separate test app process using a controlled loopback receiver. The second downloads requirements into a fresh temporary virtual environment and runs tests, the import audit, JS syntax and receiver checks. Reports are under `verification/`; neither validates real API keys, exact physician participation or production network isolation.

@@ -118,6 +118,12 @@ def protected_values(data):
     for case in data.get("cases", {}).values():
         for phrase in symptom_phrases(case.get("description", "")):
             add("symptoms", phrase, _pattern_matcher(tu.phrase_pattern(phrase)))
+        for phrase in symptom_phrases((case.get("contact") or {}).get("notes", "")):
+            add("contact_notes", phrase, _pattern_matcher(tu.phrase_pattern(phrase)))
+        for provider in case.get("providers", []):
+            for answer in provider.get("answers", []):
+                for phrase in symptom_phrases(answer.get("answer", "") + "; " + answer.get("source", "")):
+                    add("confirmation_answers", phrase, _pattern_matcher(tu.phrase_pattern(phrase)))
         for label in case.get("symptom_terms", []):
             add("symptoms", label, _pattern_matcher(tu.phrase_pattern(label)))
     for bill in data.get("bills", {}).values():
@@ -205,7 +211,7 @@ class Egress:
         self.store.add_ledger(entry)
         return entry
 
-    def _preflight(self, service, destination, purpose, payload, allowed_values, method, path):
+    def _preflight(self, service, destination, purpose, payload, allowed_values, method, path, extra_data=None):
         base = dict(service=service, destination=destination, method=method, path=path,
                     purpose=purpose, payload=redact(payload),
                     declared=[v for v in allowed_values if v],
@@ -216,11 +222,23 @@ class Egress:
         if destination not in self.config.allowed_hosts():
             self._record(**base, status="blocked", reason="Host is not on the allowlist")
             raise EgressBlocked(f"{destination} is not on the allowlist")
-        leaks = dlp_violations(payload, self._data(), allowed_values)
+        leaks = sorted(set(dlp_violations(payload, self._data(), allowed_values) + dlp_violations(payload, extra_data or {})))
         if leaks:
             self._record(**base, status="blocked", reason="DLP: would have sent " + ", ".join(leaks))
             raise EgressBlocked("Blocked before sending: the request contained your " + ", ".join(leaks))
         return base
+
+    def synthetic_probe(self):
+        """Exercise the real preflight with an extra synthetic protected phrase; never open a socket."""
+        marker = "FIRSTVISIT SYNTHETIC PRIVATE HEALTH CHECK"
+        destination = sorted(self.config.allowed_hosts())[0] if self.config.allowed_hosts() else "api.exa.ai"
+        try:
+            self._preflight("Synthetic privacy self-check", destination, "Synthetic test; no real patient data; no network call",
+                            {"url": f"https://{destination}/search", "body": {"query": marker}}, (), "POST", "/search",
+                            extra_data={"cases": {"synthetic": {"description": marker}}})
+        except EgressBlocked as e:
+            return {"blocked": True, "reason": str(e), "network_called": False, "synthetic": True}
+        return {"blocked": False, "reason": "Preflight did not block the synthetic value; investigate before using live discovery", "network_called": False, "synthetic": True}
 
     def http(self, method, url, *, service, purpose, headers=None, json_body=None,
              allowed_values=(), timeout=25):

@@ -84,6 +84,7 @@ def clean_input(raw):
                   language=text(raw.get("language", "English"), 50), description=text(raw.get("description"), 3000),
                   history=text(raw.get("history"), 3000), medications=text(raw.get("medications"), 1000),
                   plan=clean_plan(raw.get("plan")), months=int(months), demo=raw.get("demo") is True,
+                  scenario="neu_student" if raw.get("scenario") == "neu_student" else "",
                   routine_confirmed=True, adult=True, age=None if age is None else int(age),
                   need=raw.get("need") if raw.get("need") in ("checkup", "refill", "follow_up") else "",
                   safety=None if safety is None else {k: safety[k] for k in ("level", "headline", "rules", "checks")},
@@ -136,9 +137,14 @@ def ranked(case):
             reasons.append("Compare cash with your plan; cash payments may not count toward your deductible")
         if not provider.get("demo"):
             reasons.append("New-patient acceptance and appointment availability need confirmation")
-        rows.append(dict(provider=provider, cash=cash, insured=insured, cost=chosen, pathway=pathway,
+        from .workflow import current_answers
+        answers = current_answers(provider, person)
+        unavailable = bool(answers.get("availability", {}).get("result") == "no" and not answers["availability"]["stale"])
+        if unavailable:
+            reasons.append("Office reported no suitable new-patient appointment; keep this as a backup, not an actionable choice")
+        rows.append(dict(answers=answers, unavailable=unavailable, provider=provider, cash=cash, insured=insured, cost=chosen, pathway=pathway,
                          supported=supported, miles=miles, language_match=language_match, over_budget=over_budget,
-                         reasons=reasons, comparison=comparison(provider, person.get("plan"), person["visit_date"], person["service"], person["months"])))
+                         reasons=reasons, confirmation=confirmation_tasks(person, provider, cash, insured), comparison=comparison(provider, person.get("plan"), person["visit_date"], person["service"], person["months"])))
 
     def key(row):
         p = row["provider"]
@@ -147,14 +153,14 @@ def ranked(case):
         review = p.get("rating")
         rating_key = -review["value"] if review else math.inf
         dist_key = row["miles"] if row["miles"] is not None else math.inf
-        base = (not row["supported"], row["over_budget"])
+        base = (row["unavailable"], not row["supported"], row["over_budget"])
         priority = person["priority"]
         if priority == "rating":
             return base + (rating_key, price_key, dist_key, p["name"])
         if priority == "distance":
             return base + (dist_key, price_key, rating_key, p["name"])
         if priority == "cost":
-            return (not row["supported"], price is None, row["over_budget"], price_key, rating_key, dist_key, p["name"])
+            return (row["unavailable"], not row["supported"], price is None, row["over_budget"], price_key, rating_key, dist_key, p["name"])
         return base + (not row["language_match"], price_key, rating_key, dist_key, p["name"])
     rows.sort(key=key)
     return rows
@@ -204,3 +210,29 @@ def update_quote(provider, raw, service):
             raise ValueError("A patient rating needs its source URL and a positive whole review count")
         provider["rating"] = dict(value=rating, count=int(count), source=rating_source, checked_on=checked, user_entered=True)
     provider["confirmation_source"] = source
+
+
+def confirmation_tasks(person, provider, cash=None, insured=None):
+    """Questions are scoped to this candidate; unknown price is not medical unsuitability."""
+    cash = cash if cash is not None else cash_cost(provider, person["service"])
+    insured = insured if insured is not None else insured_cost(provider, person.get("plan"), person["visit_date"], person["service"])
+    from .workflow import current_answers
+    answers = current_answers(provider, person)
+    tasks = []
+    if person["service"] not in provider.get("services", []):
+        tasks.append({"key": "service", "question": "Does this location offer the requested service for adults?"})
+    if not provider.get("demo"):
+        tasks.append({"key": "availability", "question": "Is the selected clinician accepting new adult patients, and what appointments can you confirm?"})
+    if cash["amount"] is None:
+        tasks.append({"key": "cash", "question": "What is the complete self-pay price for this visit, including facility and professional fees? Can I get a written estimate?"})
+    if person["insurance"] == "yes" and insured["amount"] is None:
+        plan = (person.get("plan") or {}).get("name") or "my exact plan (name still to confirm)"
+        tasks.append({"key": "insurance", "question": f"Can the insurer and office confirm {plan} covers this clinician, location and service in-network? What benefit rule and allowed charge apply?", "reason": insured["reason"]})
+    if person.get("language", "English") != "English":
+        tasks.append({"key": "language", "question": f"Is {person['language']} language or interpreter support available, and is there a charge?"})
+    if answers.get("referral", {}).get("result") == "yes" and not answers["referral"]["stale"]:
+        action = answers.get("referral_action", {})
+        if action.get("result") != "yes" or action.get("stale") or action.get("checked_on", "") < answers["referral"]["checked_on"]:
+            tasks.append({"key": "referral_action", "question": "A referral or authorization was reported as required. Obtain it and confirm it applies to this appointment before booking."})
+    tasks.append({"key": "referral", "question": "Is a referral or prior authorization required for this visit?"})
+    return [t for t in tasks if t["key"] == "referral_action" or t["key"] not in answers or answers[t["key"]]["stale"] or answers[t["key"]]["result"] == "unknown"]

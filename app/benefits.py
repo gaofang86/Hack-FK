@@ -98,6 +98,12 @@ def cash_cost(provider, service):
     quote = provider.get("cash", {})
     if quote.get("amount") is None or quote.get("service") != service or not quote.get("scope_confirmed"):
         return unknown("Ask for a quote covering this visit, including any facility or professional fees.")
+    try:
+        checked = date.fromisoformat(quote.get("checked_on", ""))
+    except ValueError:
+        return unknown("Add the date this quote was checked.")
+    if (date.today() - checked).days > 30 or checked > date.today():
+        return unknown("The cash quote needs reconfirmation (missing, future or over 30 days old).")
     return {"amount": quote["amount"], "status": "demo" if provider.get("demo") else "user_quote",
             "reason": "Scoped visit quote; extra testing or treatment may cost more.",
             "source": quote.get("source", ""), "checked_on": quote.get("checked_on", ""), "breakdown": []}

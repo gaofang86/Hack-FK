@@ -15,6 +15,20 @@ REAL = [
 ]
 
 
+BROOKLINE = [
+    {"id": "bwh-brookline", "name": "Brigham and Women's Primary Care Associates of Brookline",
+     "kind": "Outpatient primary care", "url": "https://www.massgeneralbrigham.org/en/locations/brookline-ma/brigham-and-womens-primary-care-associates-of-brookline-loc0000280904",
+     "address": "1 Brookline Place, Suite 225, Brookline, MA 02445", "phone": "857-307-4400",
+     "city": "Brookline", "state": "MA", "services": ["primary_care", "follow_up"],
+     "source_note": "Official location page lists adult primary-care services. Exact clinician, new-patient acceptance, NUSHP network, complete charges and appointments are unconfirmed."},
+    {"id": "bilh-beacon", "name": "Beth Israel Lahey Health Primary Care – 1180 Beacon Street",
+     "kind": "Primary care practice", "url": "https://bilh.org/locations/bilh-pc-1180-beacon",
+     "address": "1180 Beacon Street, 8th floor, Brookline, MA 02446", "phone": "617-734-2433",
+     "city": "Brookline", "state": "MA", "services": ["primary_care", "follow_up"],
+     "source_note": "Official page lists adult physicals and primary-care services. In neighboring ZIP 02446; travel distance, new-patient acceptance, exact-plan network and price remain unconfirmed."},
+]
+
+
 def candidates(city, state, demo=False, service="primary_care"):
     today = date.today().isoformat()
     if demo and service == "same_day":
@@ -35,8 +49,8 @@ def candidates(city, state, demo=False, service="primary_care"):
                                                    "scope_confirmed": True, "source": "Synthetic demo plan relationship", "checked_on": today}},
                      rating={"value": rating, "count": count, "source": "Synthetic patient reviews", "checked_on": today})
                 for key, name, kind, cash, allowed, rating, count, languages, lat, lon in specs]
-    if service == "same_day" or city.casefold() != "boston" or state.upper() != "MA":
+    if service == "same_day" or city.casefold() not in ("boston", "brookline") or state.upper() != "MA":
         # No sourced same-day directory yet: real same-day results come only from live search.
         return []
     return [dict(deepcopy(item), demo=False, cash={}, coverage={}, rating=None, languages=[], checked_on=SOURCES_CHECKED)
-            for item in REAL]
+            for item in (BROOKLINE if city.casefold() == "brookline" else REAL)]
