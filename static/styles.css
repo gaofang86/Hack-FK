@@ -167,3 +167,12 @@ html[data-ui-locale="en"] .home-composer h1{font-size:44px;line-height:1.15;max-
 .answer-more{margin-top:8px}.answer-more summary{cursor:pointer;color:var(--muted)}
 .suggest-note{margin:0 0 10px}
 @media(max-width:600px){.entry-cards,.answer-grid{grid-template-columns:1fr}.entry-card{min-height:0}.answer-card{padding:18px 16px}.answer-headline{font-size:21px}}
+/* P2: B safety check and emergency calls inside the answer card */
+.b-safety{margin-top:12px;display:grid;gap:8px}
+.b-group{border:1px solid var(--line);border-radius:10px;background:var(--white);padding:8px 12px}
+.b-group summary{cursor:pointer;font-weight:600}.b-group .checkline{display:flex;gap:8px;margin:6px 0}
+.answer-do.urgent{background:#fdecea;border:1px solid #e8b4ad}
+.call-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.call-button{display:inline-flex;align-items:center;padding:10px 18px;border-radius:999px;text-decoration:none;font-weight:600}
+.call-button.primary{background:#b3261e;color:#fff}.call-button.secondary{border:1px solid #b3261e;color:#b3261e;background:#fff}
+.answer-card.emergency{border-color:#e8b4ad;box-shadow:0 0 0 3px #fdecea}

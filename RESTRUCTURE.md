@@ -161,7 +161,7 @@ D 另有第四列 **choosing**："Plan B costs about $X less this year for the c
 | 阶段 | 内容 | 完成标志 |
 |---|---|---|
 | P1 ✅ 2026-11-08 | 首页四卡、Me chips、`answers.py` + 场景 A 和 D（两者共用最多保险逻辑，且是新人最早的两个问题） | 矩阵 A、D 行测试通过；A↔D 跳转不重复提问 |
-| P2 | 场景 B，接 triage 与 urgent/ER 费用 | 矩阵 B 行；紧急时不显示价格 |
+| P2 ✅ 2026-11-08 | 场景 B，接 triage 与 urgent/ER 费用 | 矩阵 B 行；紧急时不显示价格。没有有来源的 urgent care 名录，所以不列具体地点，只指向保险公司目录 / HRSA；triage 规则原文暂时只有英文 |
 | P3 | 场景 C，接报告与随访 | 矩阵 C 行；报告不产生结论 |
 | P4 | 清理：删 §3/§10 冲突描述、重写 README、demo 脚本改为三个人 | 新人 30 秒内能说出"这个产品替我做什么" |
 

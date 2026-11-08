@@ -56,7 +56,7 @@ class App:
                 if 'input' not in c:
                     summaries.append(dict(id=c['id'], city='', service=journeys.KINDS.get(c.get('kind'), 'Care task'),
                                           created=c['created'], demo=False, status=c['status'], kind=c.get('kind'),
-                                          next_action=(c.get('status') != 'attended' and answers.next_line(c.get('kind'), self.store.data['profile'])) or journeys.next_step(c)))
+                                          next_action=(c.get('status') != 'attended' and answers.next_line(c.get('kind'), self.store.data['profile'], c)) or journeys.next_step(c)))
         return dict(unlocked=self.store.unlocked, vault_exists=self.store.exists(), offline=self.egress.offline,
                     preview_mode=getattr(self, "preview_mode", False),
                     services=self.cfg.services(), cases=sorted(summaries, key=lambda c: -c["created"]), today=date.today().isoformat(),
@@ -81,6 +81,16 @@ class App:
             raise ValueError('Care task not found')
         return case
 
+    @staticmethod
+    def answer_for(case, notice, profile):
+        if 'input' in case:
+            return None
+        if case.get('kind') == 'concern':
+            # B: a warning in the goal wording counts as the safety result until the person checks.
+            safety = case.get('safety') or (notice if notice['level'] in ('emergency', 'same_day') else None)
+            return answers.view('concern', profile, dict(case, safety=safety))
+        return None if notice['level'] == 'emergency' else answers.view(case.get('kind'), profile)
+
     def journey_view(self, case):
         attached = [self.store.data.get('reports', {})[rid] for rid in case.get('report_ids', []) if rid in self.store.data.get('reports', {})]
         notice = safety_check(dict(checks=[], description=case.get('goal', '')))
@@ -89,7 +99,7 @@ class App:
         return dict(case, reports=attached, safety_notice=notice if notice['level'] in ('emergency', 'same_day') else None, personal_preparation=journeys.preparation(case, attached, profile),
                     preparation_view={lang: journeys.localized(sections, lang) for lang in ('en', 'zh')}, coverage_situation=journeys.coverage_situation(case, profile),
                     suggested_coverage=journeys.suggested_coverage(case), me=answers.me(profile),
-                    answer=None if 'input' in case or notice['level'] == 'emergency' else answers.view(case.get('kind'), profile),
+                    answer=self.answer_for(case, notice, profile),
                     next_action=next_action(case, ranked(case)) if 'input' in case else journeys.next_step(case))
 
     def dispatch(self, method, path, body, query):
@@ -156,6 +166,14 @@ class App:
                 if not goal:
                     raise ValueError('Add your goal')
                 case['goal'] = goal
+                self.store.save()
+                return self.journey_view(case)
+            if path == '/api/journey/safety' and method == 'POST':
+                # B's safety check. Only the ticked check ids and the rules result are kept; the free text is not stored.
+                case = self.get_journey(body.get('id'))
+                result = safety_check(dict(checks=body.get('checks') or [], description=body.get('description') or ''))
+                case['safety'] = {k: result[k] for k in ('level', 'headline', 'why', 'options', 'rules', 'hotlines', 'checks')}
+                case['safety']['checked_on'] = date.today().isoformat()
                 self.store.save()
                 return self.journey_view(case)
             if path == '/api/reports/preview' and method == 'POST':

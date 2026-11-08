@@ -7,7 +7,7 @@ confirmed. Unknown costs are never $0.
 
 Entry points (kind ids kept for saved-task compatibility):
   first_visit -> A. I'm new here — set me up
-  concern     -> B. Something's wrong (P2: still the existing flow)
+  concern     -> B. Something's wrong — where do I go?
   follow_up   -> C. A clinician told me to… (P3: still the existing flow)
   insurance   -> D. Figure out my insurance
 """
@@ -18,10 +18,11 @@ from .benefits import clean_plan
 from .sbc import describe
 from .scenarios import SOURCES as SCENARIO_SOURCES, compare_plans
 from .student_plan import NUSHP
+from .expect import SOURCES as EXPECT_SOURCES
 
 COVERAGES = ('insured', 'uninsured', 'choosing', 'not_sure')
 LANGUAGES = ('English', 'Chinese', 'Spanish')
-CARD_KINDS = ('first_visit', 'insurance')  # P1; concern / follow_up keep the existing task page
+CARD_KINDS = ('first_visit', 'concern', 'insurance')  # P1 A/D, P2 B; follow_up (C) keeps the existing task page
 _NUSHP = re.compile(r'nushp|northeastern', re.I)
 
 
@@ -291,19 +292,171 @@ def insurance(m, profile):
         actions=[dict(id='me', label=T('我知道了，更新我的情况', 'I know now — update my situation'), primary=True)])
 
 
+# ---- B. Something's wrong — where do I go? --------------------------------------------------
+# The safety check always comes first and never depends on coverage. Price appears only for
+# non-emergency levels. No urgent-care location is invented: there is no sourced same-day
+# directory, so the card points to the insurer's directory or health-center finder instead.
+
+SICK_STAGES = [T('安全检查', 'Safety check'), T('去哪', 'Where to go'), T('费用和怎么去', 'Cost and getting there'), T('之后', 'Afterwards')]
+_UHCS = next(p for p in REAL if p['id'] == 'nu-uhcs')
+_FAIR = dict(EXPECT_SOURCES['fair_health'])
+_FAD = {'title': 'BCBSMA · Find a Doctor & Estimate Costs', 'url': 'https://member.bluecrossma.com/fad', 'checked_on': NUSHP['checked_on']}
+VENUE_TEXT = {
+    'urgent_care': T('Urgent care：当天走进去看扭伤、伤口、感染和发烧，不处理重大急症。', 'Urgent care: walk in the same day for sprains, cuts, infections and fevers; not for major emergencies.'),
+    'campus_health': T('校园诊所：学生的第一站，先查开放时间和就诊费。', 'Campus health clinic: often the first stop for students; check hours and any visit fee.'),
+    'telehealth': T('视频看诊（telehealth）：适合很多常见问题，但不能近距离看眼睛或拍 X 光。', 'Video visit (telehealth): works for many common problems; can’t examine an eye up close or X-ray an injury.'),
+    'er': T('急诊 ER：情况变坏或出现任何危险信号时去。', 'Emergency room: go if it gets worse or you notice any warning sign.'),
+    'primary_care': T('常规医生预约：计划内的照护，通常提前几天到几周预约。', 'Primary care appointment: planned care, usually booked days or weeks ahead.'),
+}
+EMERGENCY_TEXT = {  # same wording as triage.decide, in both languages
+    'emergency': T('这可能是急症。现在就打 911，或去最近的急诊室。', 'This could be an emergency. Call 911 or go to the nearest emergency room now.'),
+    'crisis': T('请现在就联系：拨打或发短信 988。如果你可能付诸行动或有危险，打 911。', 'Please reach out right now: call or text 988. If you might act on these thoughts or are in danger, call 911.'),
+    'poison': T('现在打中毒控制中心 1-800-222-1222。如果对方叫不醒、呼吸困难或抽搐，打 911。', 'Call Poison Control now at 1-800-222-1222. If the person is hard to wake, has trouble breathing, or has a seizure, call 911.'),
+}
+
+
+def _calls(safety):
+    names = ' '.join(h['name'] for h in safety.get('hotlines') or [])
+    calls = [dict(href='tel:911', label=T('打 911', 'Call 911'))]
+    if '988' in names:
+        calls += [dict(href='tel:988', label=T('打 988', 'Call 988')), dict(href='sms:988', label=T('短信 988', 'Text 988'))]
+    if 'Poison' in names:
+        calls.append(dict(href='tel:18002221222', label=T('打中毒控制中心', 'Call Poison Control')))
+    return calls
+
+
+def _emergency_kind(safety):
+    names = ' '.join(h['name'] for h in safety.get('hotlines') or [])
+    other = [r for r in safety.get('rules') or [] if not re.search(r'hurting|killing|poison|medicine', r, re.I)]
+    if '988' in names and not other:
+        return 'crisis'
+    if 'Poison' in names and not other:
+        return 'poison'
+    return 'emergency'
+
+
+def _sick_cost(m, profile, level):
+    """Same-day: urgent care vs ER. Example fees are FAIR Health illustrations, never quotes."""
+    s = ((profile.get('plan_benefits') or {}).get('services') or {}) if m['sbc'] else {}
+    if level == 'same_day':
+        if m['sbc']:
+            return [T(f'你的 urgent care：{describe(s.get("urgent", {}))}（SBC）', f'Your urgent care: {describe(s.get("urgent", {}))} (SBC)'),
+                    T(f'你的急诊 ER：{describe(s.get("er", {}))}（SBC）', f'Your ER: {describe(s.get("er", {}))} (SBC)')]
+        ex = T('FAIR Health 示例费用（不是报价）：urgent care $300，ER $1,000', 'FAIR Health example fees (not a quote): urgent care $300, ER $1,000')
+        if m['coverage'] == 'insured':
+            return [T('你的 urgent care 和 ER 自付：未知，不按 0 计算；ER 那一行通常更高', 'Your urgent care and ER share: unknown, not $0; the ER line is usually higher'), ex]
+        return [T('自费：未知，不按 0 计算，先问前台价格', 'Self-pay: unknown, not $0; ask the front desk first'), ex]
+    if m['sbc']:
+        return [T(f'常规/视频看诊：{describe(s.get("primary", {}))}（SBC）', f'Regular or video visit: {describe(s.get("primary", {}))} (SBC)')]
+    if m['coverage'] == 'insured':
+        return [T('看一次自付：未知，不按 0 计算；问保险的 telehealth 或护士热线', 'Your share: unknown, not $0; ask your plan about its telehealth or nurse line')]
+    return [T('自费价格：未知，不按 0 计算，先问价格', 'Self-pay price: unknown, not $0; ask first')]
+
+
+def sick(m, profile, safety):
+    cov, plan, nushp = m['coverage'], m['plan'] or None, _nushp(m)
+    recheck = dict(id='recheck', label=T('重新检查', 'Redo the safety check'), primary=False)
+    if not safety:
+        return dict(stages=SICK_STAGES, stage=0,
+                    headline=T('先做 30 秒安全检查：哪里不舒服？', 'First, a 30-second safety check: what’s going on?'),
+                    why=[dict(text=T('先判断紧急程度，再谈去哪和费用；紧急情况永远不比价。', 'Urgency comes before where to go or cost; emergencies are never priced.'), source=None)],
+                    cost=[T('先完成安全检查', 'After the safety check')],
+                    do_now=dict(text=T('勾选符合的情况，或用几句话描述。只在本机判断。', 'Tick what fits, or describe it in a few words. Checked on this device only.'), script='', gloss=None),
+                    unknown=[], then=T('检查后：去哪、自己付多少', 'After the check: where to go and what it costs you'),
+                    clinics=[], calls=[], safety_form=True, actions=[])
+    level = safety['level']
+    rules = [dict(text=(r, r), source=None) for r in safety.get('rules') or []]
+    if level == 'emergency':
+        kind = _emergency_kind(safety)
+        return dict(stages=SICK_STAGES, stage=1, headline=EMERGENCY_TEXT[kind],
+                    why=rules + [dict(text=T('急诊室必须先检查和稳定病情，不论你有没有保险或能否付款（联邦法律 EMTALA）。',
+                                             'Emergency rooms must check and stabilize you whether or not you have insurance or can pay (federal law, EMTALA).'), source=None)],
+                    cost=[T('急症不比价。先求助。', 'No price comparison for an emergency. Get help first.')],
+                    do_now=dict(text=T('用下面的按钮打电话。打不了的话，请身边的人帮你打。', 'Use the button below. If you can’t call, ask someone near you to call.'), script='', gloss=None), unknown=[],
+                    then=T('安全之后，再回来记录发生了什么', 'Once you’re safe, come back and record what happened'),
+                    clinics=[], calls=_calls(safety), actions=[recheck])
+    insured = cov == 'insured'
+    if level == 'same_day':
+        venues = ['urgent_care', 'campus_health', 'er']
+        if m['sbc']:
+            s = profile['plan_benefits'].get('services') or {}
+            headline = T(f'今天就去 urgent care：你付 {describe(s.get("urgent", {}))}，急诊则是 {describe(s.get("er", {}))}。',
+                         f'Get seen today at urgent care: you pay {describe(s.get("urgent", {}))}; the ER would be {describe(s.get("er", {}))}.')
+        elif insured:
+            headline = T(f'今天就去{"校园诊所 UHCS 或" if nushp else ""}网络内的 urgent care，通常比急诊便宜得多。',
+                         f'Get seen today at {"UHCS on campus or " if nushp else ""}an in-network urgent care; it usually costs much less than the ER.')
+        elif cov == 'uninsured':
+            headline = T('今天就去 urgent care，除非情况变坏否则别去急诊：先问自费价格。', 'Get seen today at urgent care, not the ER unless it gets worse: ask the self-pay price first.')
+        elif cov == 'choosing':
+            headline = T('今天先自费去 urgent care：之后才买的保险通常不报今天这次。', 'Get seen today at urgent care and pay self-pay for now: a plan you buy later usually won’t cover today.')
+        else:
+            headline = T('今天就去 urgent care，并在前台问你的学校保险是否有效。', 'Get seen today at urgent care, and ask at the desk whether your school plan is active.')
+        then = T('看完后：记录医生说了什么，有随访就转到 C', 'Afterwards: record what the clinician said; follow-ups go to C')
+    elif level == 'soon':
+        venues = ['campus_health', 'telehealth', 'urgent_care']
+        if insured:
+            headline = T(f'一两天内看医生：用{plan or "你的保险"}的视频看诊或校园诊所通常最便宜。',
+                         f'See someone in the next day or two: a video visit or your campus clinic is usually cheapest under {plan or "your plan"}.')
+        elif cov == 'uninsured':
+            headline = T('一两天内看医生：社区健康中心或自费视频看诊，先问价格。', 'See someone in the next day or two: a community health center or a self-pay video visit; ask the price first.')
+        elif cov == 'choosing':
+            headline = T('一两天内看医生，先自费；选保险的事可以同时在 D 里做。', 'See someone in the next day or two and pay self-pay for now; choose a plan in D meanwhile.')
+        else:
+            headline = T('一两天内看医生：先查你是否有学校保险，它决定去哪最便宜。', 'See someone in the next day or two: first check whether your school plan covers you; it decides the cheapest place.')
+        then = T('如果变严重：直接去 urgent care 或急诊', 'If it gets worse: go to urgent care or the ER')
+    else:
+        venues = ['primary_care', 'campus_health', 'telehealth']
+        headline = {
+            'insured': T('这可以约常规门诊：找网络内的常规医生，体检常常是 0 元。', 'This can be a regular appointment: book an in-network regular doctor; checkups are often $0.')
+            if 'checkup' in (safety.get('checks') or []) else
+            T('这可以约常规门诊：找网络内的常规医生或校园诊所。', 'This can be a regular appointment: book an in-network regular doctor or your campus clinic.'),
+            'uninsured': T('这可以约常规门诊：社区健康中心按收入收费，先问自费价。', 'This can be a regular appointment: community health centers charge by income; ask the self-pay price.'),
+            'choosing': T('这可以约常规门诊：先选好计划，它决定你能去哪。', 'This can be a regular appointment: pick a plan first; it decides where you can go.'),
+        }.get(cov, T('这可以约常规门诊：先确认你有没有保险。', 'This can be a regular appointment: confirm your coverage first.'))
+        then = T('转到 A：找一个常规医生', 'Go to A: find a regular doctor')
+    why = rules + [dict(text=VENUE_TEXT[v], source=_FAIR if v in ('urgent_care', 'er') else None) for v in venues]
+    links = [_FAD] if nushp else ([_src('hrsa')] if cov in ('uninsured', 'choosing') else [])
+    if insured:
+        do_text = T('打卡背面的会员电话或护士热线，问最近的网络内 urgent care。', 'Call the member or nurse line on your card and ask for the nearest in-network urgent care.') if level == 'same_day' \
+            else T('打卡背面的电话，问视频看诊或网络内诊所。', 'Call the number on your card and ask about video visits or an in-network clinic.')
+        script = f'Which in-network {"urgent care" if level == "same_day" else "clinic or video visit"} near me takes {plan or "my plan"}, and what will I owe?'
+        gloss = T('意思：附近哪家网络内的诊所接受我的保险？我要付多少？', 'Ask for an in-network place and your share.')
+    else:
+        do_text = T('到前台或打电话先问自费价格。', 'Ask the front desk or call for the self-pay price before you’re seen.')
+        script = 'Hi, I don’t have insurance. What is your self-pay price for this visit, and do you offer a discount or payment plan?'
+        gloss = T('意思：我没有保险，这次自费多少？有没有折扣或分期？', 'Ask for the self-pay price.')
+    unknown = [T('具体地点的价格和今天能不能看：营业时间不等于有号', 'The exact place’s price and whether they can see you today: open hours are not availability')]
+    if insured and not m['sbc']:
+        unknown.append(T('你计划的 urgent care / ER 自付：上传 SBC 后会显示', 'Your plan’s urgent care / ER share: add your SBC to see it'))
+    actions = [recheck]
+    if level == 'routine':
+        actions.insert(0, dict(id='go-settle', label=T('找一个常规医生', 'Find a regular doctor'), primary=True))
+    if cov in ('not_sure', 'choosing'):
+        actions.insert(0, dict(id='go-insurance', label=T('弄懂我的保险', 'Figure out my insurance'), primary=level == 'routine'))
+    return dict(stages=SICK_STAGES, stage=2, headline=headline, why=why, cost=_sick_cost(m, profile, level),
+                do_now=dict(text=do_text, script=script, gloss=gloss), unknown=unknown, then=then,
+                clinics=[_clinic(_UHCS)] if nushp and level in ('same_day', 'soon') else [], calls=[], links=links,
+                actions=actions)
+
+
 # ---- entry ---------------------------------------------------------------------------------
 
-def card(kind, profile):
+def card(kind, profile, case=None):
     if kind not in CARD_KINDS:
         return None
-    m = me(profile)
-    body = settle(m, profile or {}) if kind == 'first_visit' else insurance(m, profile or {})
+    m, profile = me(profile), profile or {}
+    if kind == 'first_visit':
+        body = settle(m, profile)
+    elif kind == 'concern':
+        body = sick(m, profile, (case or {}).get('safety'))
+    else:
+        body = insurance(m, profile)
     return dict(body, kind=kind, coverage=m['coverage'])
 
 
-def next_line(kind, profile):
+def next_line(kind, profile, case=None):
     """Bilingual "zh / en" next action for saved-task lists; None for entries without a card yet."""
-    c = card(kind, profile)
+    c = card(kind, profile, case)
     if c is None:
         return None
     zh, en = c['do_now']['text']
@@ -320,6 +473,6 @@ def _localize(value, i):
     return value
 
 
-def view(kind, profile):
-    c = card(kind, profile)
+def view(kind, profile, case=None):
+    c = card(kind, profile, case)
     return None if c is None else {'zh': _localize(c, 0), 'en': _localize(c, 1)}

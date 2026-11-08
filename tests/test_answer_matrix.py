@@ -1,6 +1,6 @@
 """RESTRUCTURE.md §6: same entry, one parameter changed -> a visibly different answer.
 
-Rows A (first_visit) and D (insurance) are P1. B and C keep the existing task page for now.
+Rows A (first_visit) and D (insurance) are P1, row B (concern) is P2. C keeps the existing task page for now.
 """
 from pathlib import Path
 import re
@@ -24,7 +24,7 @@ SBC = {'name': 'SYNTHETIC PPO', 'services': {'primary': {'kind': 'copay', 'amoun
 
 class MatrixTests(unittest.TestCase):
     def test_each_coverage_changes_the_headline_for_rows_a_and_d(self):
-        for kind in answers.CARD_KINDS:
+        for kind in ('first_visit', 'insurance'):
             heads = {cov: answers.view(kind, p)['en']['headline'] for cov, p in PROFILES.items()}
             self.assertEqual(len(set(heads.values())), 4, (kind, heads))
             for cov, p in PROFILES.items():
@@ -70,8 +70,55 @@ class MatrixTests(unittest.TestCase):
         v = answers.view('insurance', dict(PROFILES['choosing'], plan_compare=compare))['en']
         self.assertIn('Can’t rank yet', v['headline'])
 
-    def test_b_and_c_are_not_cards_yet(self):
-        self.assertIsNone(answers.view('concern', {})); self.assertIsNone(answers.view('follow_up', {}))
+    def test_c_is_not_a_card_yet(self):
+        self.assertIsNone(answers.view('follow_up', {}))
+
+
+def safety(*checks, description=''):
+    from app.navigation import safety_check
+    return safety_check({'checks': list(checks), 'description': description})
+
+
+class RowBTests(unittest.TestCase):
+    def b(self, profile, s):
+        return answers.view('concern', profile, {'safety': s})['en']
+
+    def test_safety_check_comes_first_for_everyone(self):
+        heads = {self.b(p, None)['headline'] for p in PROFILES.values()}
+        self.assertEqual(len(heads), 1)
+        v = self.b(PROFILES['insured'], None)
+        self.assertTrue(v['safety_form']); self.assertEqual(v['stage'], 0); self.assertFalse(any('$' in c for c in v['cost']))
+
+    def test_non_emergency_levels_change_with_coverage(self):
+        for checks in (('injury',), ('sore_throat',), ('refill',), ('checkup',)):
+            s = safety(*checks)
+            heads = {cov: self.b(p, s)['headline'] for cov, p in PROFILES.items()}
+            self.assertEqual(len(set(heads.values())), 4, (checks, heads))
+            if checks != ('checkup',):
+                self.assertFalse(any('$0' in h for h in heads.values()), heads)
+
+    def test_emergency_never_varies_or_shows_a_price(self):
+        for checks, call in ((('chest_pain',), 'tel:911'), (('self_harm',), 'tel:988'), (('poison',), 'tel:18002221222')):
+            s = safety(*checks)
+            views = [self.b(p, s) for p in PROFILES.values()]
+            self.assertEqual(len({v['headline'] for v in views}), 1, checks)
+            for v in views:
+                self.assertFalse(re.search(r'\$\d', v['headline'] + ''.join(v['cost'])), v)
+                self.assertIn(call, [c['href'] for c in v['calls']]); self.assertEqual(v['clinics'], [])
+        self.assertIn('988', self.b({}, safety('self_harm'))['headline'])
+
+    def test_same_day_uses_sbc_urgent_and_er_lines(self):
+        v = self.b({'insurance': 'yes', 'plan': {'name': 'SYNTHETIC PPO'}, 'plan_benefits': SBC}, safety('injury'))
+        self.assertIn('$50.00 copay', v['headline']); self.assertIn('$150.00 copay', v['headline'])
+
+    def test_refill_is_not_told_it_may_be_free(self):
+        self.assertNotIn('$0', self.b(PROFILES['insured'], safety('refill'))['headline'])
+        self.assertIn('$0', self.b(PROFILES['insured'], safety('checkup'))['headline'])
+
+    def test_no_invented_urgent_care_location(self):
+        self.assertEqual(self.b(PROFILES['uninsured'], safety('injury'))['clinics'], [])
+        nushp = self.b(PROFILES['insured'], safety('injury'))
+        self.assertEqual([c['id'] for c in nushp['clinics']], ['nu-uhcs'])  # sourced campus clinic only
 
 
 class MeTests(unittest.TestCase):
@@ -112,6 +159,18 @@ class ApiTests(unittest.TestCase):
         lines = {c['kind']: c['next_action'] for c in self.app.state()['cases']}
         self.assertIn('Ask NUSHP for the 2026–27 SBC', lines['insurance'])  # not the old one-size-fits-all sentence
         self.assertIn('Call ', lines['first_visit'])
+
+    def test_b_safety_check_is_stored_without_free_text(self):
+        j = self.post('/api/journeys', kind='concern', goal='SYNTHETIC concern')
+        self.assertTrue(j['answer']['en']['safety_form'])
+        j = self.post('/api/journey/safety', id=j['id'], checks=['injury'], description='SYNTHETIC private words')
+        self.assertEqual(j['safety']['level'], 'same_day'); self.assertEqual(j['answer']['en']['stage'], 2)
+        self.assertNotIn('SYNTHETIC private words', str(self.app.store.data['cases'][j['id']]))
+        self.assertIn('urgent care', j['answer']['en']['headline'])
+
+    def test_b_goal_warning_shows_the_emergency_card(self):
+        j = self.post('/api/journeys', kind='concern', goal='I have chest pain')
+        self.assertIn('Call 911', j['answer']['en']['headline']); self.assertIn('tel:911', [c['href'] for c in j['answer']['en']['calls']])
 
     def test_emergency_goal_gets_no_cost_card(self):
         j = self.post('/api/journeys', kind='first_visit', goal='I have chest pain')
