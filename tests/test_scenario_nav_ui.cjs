@@ -22,3 +22,7 @@ test('saving a visit or coverage does not leave the submitted form one Back step
  assert.equal((src.match(/'homeKind','profileFocus'\]/g)||[]).length,2);
 });
 test('visit notes example is not a diagnosis unrelated to the task',()=>{assert.ok(!src.includes('eye infection'));});
+test('the visit budget the person entered is shown, labelled as a limit and not a price',()=>{
+ assert.ok(src.includes("['你的预算 / Your budget'"));assert.ok(src.includes('your limit, not a price'));
+ assert.ok(src.includes('<span>Your budget</span>'));assert.ok(src.includes('Your limit, not a price.'));
+});
