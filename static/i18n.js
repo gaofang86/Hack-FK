@@ -22,6 +22,7 @@ const UI_STRINGS = [
  ['可以返回打字，或尝试仅设备识别。不要把“服务处理”理解为内容绝对私密。','You can type instead or try on-device recognition. Service processing is not a guarantee that spoken content remains private.'],
  ['仅提取报告事实。可以修正或忽略；确认前不会存入档案，也不会用报告推断诊断或安排复查。','Only source facts are extracted. Correct or omit them before saving. Report import does not infer a diagnosis or order follow-up.'],
  ['没有报告也可以继续。支持文本型检验 PDF；导入后逐项核对，原 PDF 不留存，确认的记录加密保存。','A report is optional. Supported text-based lab PDFs are reviewed row by row. The original PDF is not retained; confirmed records are encrypted.'],
+ ['填写已有的保险计划，或标记没有保险、正在选计划。费用只按你核对过的福利计算，未知的不会当成 0。','Add the plan you have, or mark that you are uninsured or choosing a plan. Costs use only benefits you have reviewed; unknown amounts are never treated as $0.'],
  ['无需马上搜索。先整理你想问的问题和已有资料，不自动生成诊断或检查要求。','Start with your questions and existing information. No search is required, and no diagnosis or test order is generated.'],
  ['进入已有的需求核对、语言、保险、时间和位置流程。公开搜索仍需单独预览确认。','Continue through the health-needs, language, insurance, time and location steps. Public searches still require a separate preview and approval.'],
  ['这份材料供你核对和自行分享。还没有发送给医生或搜索服务。','Review this material and choose whether to share it. It has not been sent to a clinician or search service.'],

@@ -1,16 +1,25 @@
 const assert=require('node:assert/strict'),test=require('node:test');
 const {suggestCompletion,GhostCompletion}=require('../static/completion.js');
 
-test('suggestions change with text/context and never invent clinical facts',()=>{
- assert.equal(suggestCompletion('I need'),' help with ');
- assert.ok(suggestCompletion('I have a question',{kind:'concern'}).includes('It started around '));
- assert.ok(suggestCompletion('I have test results',{kind:'report'}).includes('questions for a clinician'));
+test('suggestions continue the current sentence and change with context',()=>{
+ assert.equal(suggestCompletion('I need'),' help finding a doctor.');
+ // Screenshot regression: an unfinished phrase is continued, not closed with a period.
+ const firstVisit=suggestCompletion('i would like to',{kind:'first_visit'});
+ assert.ok(firstVisit.startsWith(' ')&&!firstVisit.startsWith(' I')&&!firstVisit.includes('. '),firstVisit);
+ assert.equal(suggestCompletion('i would like t',{kind:'first_visit'}).charAt(0),'o');
+ assert.notEqual(suggestCompletion('I would like to',{kind:'report'}),firstVisit);
+ assert.ok(suggestCompletion('Hi, I would like to',{kind:'report'}).includes('these results'));
+ assert.ok(suggestCompletion('I have a headache.',{kind:'concern'}).includes('It started around '));
+ assert.equal(suggestCompletion('I have a headache since yesterday.',{kind:'concern'}),'');
+ assert.equal(suggestCompletion('I have test results.',{kind:'report'}),'');
  assert.ok(suggestCompletion('医生让我去复诊',{kind:'follow_up'}).includes('安排'));
+ assert.equal(suggestCompletion('我想',{kind:'first_visit'}),'找一位离我近的家庭医生。');
  assert.equal(suggestCompletion('I would like help planning my next step.'),'');
  assert.equal(suggestCompletion(''), '');assert.equal(suggestCompletion('Anything ',{kind:'report'}),'');
  assert.equal(suggestCompletion('I need',{maxLength:7}),'');
- const suffix=suggestCompletion('My creatinine is 0.52',{kind:'report'});
- assert.ok(!/0\.52|normal|disease|repeat|in.network|tomorrow/i.test(suffix));
+ assert.equal(suggestCompletion('My creatinine is 0.52',{kind:'report'}),'');
+ for(const kind of ['first_visit','concern','report','follow_up','general'])
+  assert.ok(!/0\.52|normal|disease|diagnos|in.network|tomorrow/i.test(suggestCompletion('I would like to',{kind})));
 });
 function fixture(){
  const events=new Map();
@@ -25,7 +34,7 @@ function fixture(){
 test('Tab accepts only the displayed suffix and dispatches the normal input flow',()=>{
  const f=fixture();f.ghost.refresh();assert.equal(f.input.value,'I need');assert.equal(f.overlay.hidden,false);
  let prevented=false;f.events.get('keydown')({key:'Tab',preventDefault(){prevented=true;}});
- assert.equal(prevented,true);assert.equal(f.input.value,'I need help with ');f.ghost.destroy();
+ assert.equal(prevented,true);assert.equal(f.input.value,'I need help finding a doctor.');f.ghost.destroy();
 });
 test('Tab with no suggestion, Shift+Tab, selections and composing keep ordinary navigation',()=>{
  for(const scenario of ['none','shift','selection','composing']){
@@ -37,7 +46,7 @@ test('Tab with no suggestion, Shift+Tab, selections and composing keep ordinary 
 });
 test('Escape dismisses without changing input and stale context cannot be accepted',()=>{
  const f=fixture();f.ghost.refresh();f.events.get('keydown')({key:'Escape'});f.ghost.refresh();assert.equal(f.overlay.hidden,true);assert.equal(f.input.value,'I need');
- f.input.value='I have something to discuss';f.input.selectionStart=f.input.selectionEnd=f.input.value.length;f.events.get('input')({});f.setKind('report');f.ghost.refresh();f.setKind('concern');assert.equal(f.ghost.accept(),false);assert.equal(f.input.value,'I have something to discuss');f.ghost.destroy();
+ f.input.value='I would like to';f.input.selectionStart=f.input.selectionEnd=f.input.value.length;f.events.get('input')({});f.setKind('report');f.ghost.refresh();f.setKind('concern');assert.equal(f.ghost.accept(),false);assert.equal(f.input.value,'I would like to');f.ghost.destroy();
 });
 test('composition hides hints; scroll mirrors the input; destroy removes listeners',()=>{
  const f=fixture();f.ghost.refresh();f.events.get('compositionstart')();f.ghost.refresh();assert.equal(f.overlay.hidden,true);

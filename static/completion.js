@@ -1,34 +1,55 @@
 'use strict';
 
 // Local phrase suggestions only. No model/network calls and no invented clinical facts.
+// Suggestions continue the sentence the user is writing; they never append an unrelated
+// canned sentence after an unfinished one.
+const PHRASES={
+ en:{
+  insurance:['I would like to know what my insurance covers for a doctor visit.','I would like to know how much a visit would cost me.','I would like to compare health insurance plans.','I have student insurance but I am not sure how to use it.','I do not have insurance right now.','I am not sure whether a clinic accepts my insurance.','I need help understanding my deductible and copay.'],
+  first_visit:['I would like to find a primary care doctor near me.','I would like to know what to bring to my first visit.','I would like to know how much a first visit might cost.','I have not seen a doctor in the US before.','I am not sure how my insurance works for a first visit.','I would prefer a doctor who speaks my language.','I need help finding a doctor who accepts my insurance.'],
+  concern:['I would like help describing my symptoms to a clinician.','I would like to know which kind of clinic to contact.','I am not sure whether I should book a visit.','I am not sure which kind of clinic to go to.','I need help finding a clinic I can visit soon.'],
+  report:['I would like help preparing questions for my clinician.','I would like to know who to ask about these results.','I got my test results and I am not sure what to ask.','I need help preparing for a visit about my results.'],
+  follow_up:['I would like help preparing questions about my results.','I got my test results and I am not sure what to ask.','My doctor asked me to come back for a follow-up visit.','My doctor recommended that I see a specialist.','I would like to know whether I need a referral.','I need help booking the next appointment.','I am not sure how to arrange the next step.'],
+  general:['I would like help planning my next step.','I need help finding a doctor.','I need help with my insurance.','I am not sure how to get started.']
+ },
+ zh:{
+  insurance:['我想知道我的保险能报销哪些看病费用。','我想知道看一次医生自己要付多少钱。','我想比较几个保险计划。','我有学生保险，但不知道怎么用。','我现在没有医疗保险。','我不确定诊所收不收我的保险。'],
+  first_visit:['我想找一位离我近的家庭医生。','我想知道第一次看病需要带什么。','我想知道第一次看病大概要花多少钱。','我在美国还没看过医生。','我不太清楚我的保险怎么用。','我希望医生能说我的语言。'],
+  concern:['我想整理一下要告诉医生的症状。','我想知道应该联系哪种诊所。','我不确定要不要预约看病。'],
+  report:['我想整理一下问医生的问题。','我拿到了检查报告，不知道该问什么。','我想知道这些结果应该问谁。'],
+  follow_up:['我拿到了检查报告，想整理问医生的问题。','医生让我去复诊，我需要帮忙安排时间。','医生建议我去看专科。','我想知道是否需要转诊。','我需要帮忙预约下一次就诊。'],
+  general:['我想理清接下来应该做什么。','我想请你帮我找医生。','我不太清楚怎样开始。']
+ }
+};
+const TIMING={en:/\b(since|started|yesterday|today|last week|ago|for \d+)\b/i,zh:/(开始|持续|昨天|今天|前天|上周|[一二三四五六七八九十\d]+[天周月年])/};
+
 function suggestCompletion(value,{kind='general',locale='en',maxLength=2000}={}){
  if(typeof value!=='string'||!value.trim())return '';
- const chinese=/[\u3400-\u9fff]/.test(value),language=chinese?'zh':/[a-z]/i.test(value)?'en':locale;
- const trimmed=value.trimStart();
- const openings=language==='zh'?['我想请你帮我','我不太清楚怎样','医生建议我']:['I would like help with ','I need help with ','I am not sure how to ','My doctor asked me to '];
- for(const opening of openings){
-  if(trimmed.length>=2&&opening.toLowerCase().startsWith(trimmed.toLowerCase())&&trimmed.length<opening.length){const suffix=opening.slice(trimmed.length);return value.length+suffix.length<=maxLength?suffix:'';}
+ const language=/[㐀-鿿]/.test(value)?'zh':/[a-z]/i.test(value)?'en':(locale==='zh'?'zh':'en');
+ const fit=suffix=>suffix&&value.length+suffix.length<=maxLength?suffix:'';
+ // The sentence currently being written: text after the last sentence terminator.
+ const fragment=value.split(/[.!?。！？\n]/).pop().replace(/^\s+/,'').replace(/\s+/g,' ');
+ if(!fragment){
+  // Only one follow-on prompt after a finished sentence: when a concern has no timing yet.
+  if(kind!=='concern'||TIMING[language].test(value))return '';
+  return fit(language==='zh'?'大概是从':(/\s$/.test(value)?'':' ')+'It started around ');
  }
- if(/\s$/.test(value)||/[,:;，：；]$/.test(value)||trimmed.length<(language==='zh'?5:10))return '';
- let next='';
- if(language==='zh'){
-  if(/(想问|想了解|需要帮助|希望帮助|帮我|怎么办|下一步)/.test(value))return '';
-  if(kind==='concern'&&!/(开始|持续|昨天|今天|前天|上周|[一二三四五六七八九十\d]+[天周月年])/.test(value))next='大概开始于';
-  else if(kind==='report'||/(报告|结果|检查)/.test(value))next='我想整理一下问医生的问题。';
-  else if(kind==='follow_up'||/(医生|复诊)/.test(value))next='我需要帮助安排接下来的事项。';
-  else if(kind==='first_visit')next='我想了解联系诊所前需要准备什么。';
-  else next='我想理清接下来应该做什么。';
- }else{
-  if(/\b(help|next step|what to|how to|questions? for|would like to know)\b/i.test(value))return '';
-  if(kind==='concern'&&!/\b(since|started|yesterday|today|last week|for \d+)\b/i.test(value))next='It started around ';
-  else if(kind==='report'||/\b(results?|report|blood test)\b/i.test(value))next='I would like help preparing questions for a clinician.';
-  else if(kind==='follow_up'||/\b(doctor|follow.up)\b/i.test(value))next='I would like help arranging the next step.';
-  else if(kind==='first_visit')next='I would like to know what to prepare before contacting a practice.';
-  else next='I would like help planning my next step.';
+ const bank=PHRASES[language],phrases=[...(bank[kind]||[]),...(kind==='general'?[]:bank.general)];
+ const lower=fragment.toLowerCase();
+ // Try the whole fragment first, then shorter word-aligned tails ("Hi, I would like to").
+ const starts=[0];
+ if(language==='en'){for(let i=1;i<lower.length;i++)if(/[\s,;:]/.test(lower[i-1])&&lower[i]!==' ')starts.push(i);}
+ else for(let i=1;i<lower.length;i++)starts.push(i);
+ for(const start of starts){
+  const tail=lower.slice(start);
+  const minimum=start===0?(language==='zh'?2:3):(language==='zh'?3:0);
+  if(tail.length<minimum)break;
+  if(language==='en'&&start>0&&!/\S \S/.test(tail))break; // later tails need at least two words
+  for(const phrase of phrases){
+   if(phrase.length>tail.length&&phrase.toLowerCase().startsWith(tail))return fit(phrase.slice(tail.length));
+  }
  }
- const separator=language==='zh'?(/[。！？.!?]$/.test(value)?'':'。'):(/[.!?]$/.test(value)?' ':'. ');
- const suffix=separator+next;
- return value.length+suffix.length<=maxLength?suffix:'';
+ return '';
 }
 
 class GhostCompletion{

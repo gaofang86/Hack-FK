@@ -37,10 +37,10 @@ class JourneyTests(unittest.TestCase):
         p=self.post('/api/reports/preview',journey_id=j['id'],pdf_base64=synthetic_pdf(),file_name='synthetic.pdf')
         return p,self.post('/api/reports/confirm',token=p['token'],confirmed=True,rows=p['rows'])
     def test_all_scenarios_start_without_report_or_full_profile(self):
-        for kind in ('general','first_visit','concern','report','follow_up'):
+        for kind in ('general','insurance','first_visit','concern','report','follow_up'):
             j=self.task(kind);self.assertEqual(j['kind'],kind);self.assertEqual(j['reports'],[])
             self.assertIn('Questions for my clinician',j['personal_preparation'])
-        self.assertEqual(len(self.get('/api/state')['cases']),5)
+        self.assertEqual(len(self.get('/api/state')['cases']),6)
         self.assertFalse(self.get('/api/state')['profile_ready'])
     def test_review_is_required_and_report_does_not_create_medical_tasks(self):
         j=self.task('report');p=self.post('/api/reports/preview',journey_id=j['id'],pdf_base64=synthetic_pdf())

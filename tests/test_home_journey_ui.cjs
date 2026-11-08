@@ -8,7 +8,7 @@ function fixture(supported=false){
  vm.runInNewContext(helpers+'\n'+src.slice(src.indexOf('const JOURNEY_KINDS='),src.indexOf('function bindHome()'))+'\nglobalThis.composer=homeComposer;globalThis.prompt=homePrompt;globalThis.updatePrompt=updateHomePrompt;',c);return c;
 }
 test('homepage presents four starting points without a report or complete-profile prerequisite',()=>{
- const html=fixture().composer();for(const k of ['first_visit','concern','report','follow_up'])assert.ok(html.includes(`data-journey-kind="${k}"`));assert.ok(html.includes('name="kind" value="general"'));assert.ok(!html.includes('Follow through'));
+ const html=fixture().composer();for(const k of ['insurance','first_visit','concern','follow_up'])assert.ok(html.includes(`data-journey-kind="${k}"`));assert.ok(!html.includes('data-journey-kind="report"'));assert.ok(html.indexOf('data-journey-kind="insurance"')<html.indexOf('data-journey-kind="first_visit"'));assert.ok(html.includes('name="kind" value="general"'));assert.ok(!html.includes('Follow through'));
  assert.ok(html.includes('继续已保存的任务'));assert.ok(!html.includes('dictation-button'));assert.ok(!html.includes('type="file"'));
 });
 test('supported browser exposes explicit modes, starts nothing and escapes the unsaved goal',()=>{
@@ -21,6 +21,6 @@ test('scenario prompts ask concrete follow-up questions without replacing the us
  const button={dataset:{journeyKind:'follow_up'},setAttribute(k,v){this[k]=v;}};
  c.$=selector=>selector==='#home-goal'?box:hint;c.document={querySelectorAll:()=>[button]};c.I18n={apply(){}};
  c.updatePrompt('follow_up');assert.equal(box.value,'Keep my own words');assert.ok(box.placeholder.includes('My doctor asked me to'));assert.ok(hint.textContent.includes('when is it due'));assert.equal(button['aria-pressed'],'true');
- c.updatePrompt('report');assert.equal(box.value,'Keep my own words');assert.ok(hint.textContent.includes('You can add the file later'));
+ c.updatePrompt('insurance');assert.ok(hint.textContent.includes('Do you have insurance now'));c.updatePrompt('follow_up');assert.equal(box.value,'Keep my own words');assert.ok(hint.textContent.includes('You can add the file later'));
  assert.ok(c.prompt('unknown').hint.includes('A few words are enough'));
 });
