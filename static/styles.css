@@ -130,3 +130,4 @@ html[data-ui-locale="en"] .home-composer h1{font-size:44px;line-height:1.15;max-
 .task-stages .locked button{opacity:.5}
 .task-known{border:1px solid var(--line);border-radius:14px;background:white;padding:12px 16px;margin:0 0 20px}.task-known summary{font-weight:600;cursor:pointer}
 .task-known dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px;margin:10px 0 0}.task-known dt{font-size:12px;opacity:.7}.task-known dd{margin:2px 0 0;font-size:14px}
+.task-wizard .form-panel{max-width:860px}.sub-steps{font-size:13px;font-weight:600;color:var(--teal);margin:0 0 10px}
