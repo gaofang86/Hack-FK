@@ -62,15 +62,23 @@ Only then do we ask about insurance and split into three scenarios. **The three 
 
 > Note: every resource and rule needs an official source and date. Eligibility is never inferred; the app only tells users where to confirm it.
 
-### Current code and gaps (17:45)
+### Current code (evening of Nov 7, commit 4718c52)
 
-| Part | Current code | Gap |
-|---|---|---|
-| Entry order | **Location** first → insurance → need (this is the current code's order: location first) | Change to person first: health and need (with safety check) → age, language, insurance → scenario + health to-dos; ask for location only when it is time to find a place. `triage.py` is drafted but not connected |
-| A. Has insurance | `benefits.insured_cost` calculates personal cost and compares it with self-pay | No benefit summary, no referral or preventive-service guidance; the results page is still centered on a clinic list |
-| B. No insurance | `benefits.cash_cost` ranks by self-pay price; there is a "check your school account" hint | No resource list, no Good Faith Estimate guidance or scripts |
-| C. Choosing a plan | `benefits.comparison` only covers one visit + N premium payments | No "most-needed services" input, no multi-plan comparison, no yearly estimate |
-| Results page | All three scenarios share one clinic-list template | Each scenario needs its own results page |
+| Part | Status |
+|---|---|
+| Health profile (birth year, optional sex, language, conditions, medications with refill dates, allergies, follow-ups, coverage) | ✅ Encrypted on the device; Welcome back home; "What we know" with per-item Forget |
+| To-dos and better choices | ✅ Refill and follow-up reminders; age/sex screenings and vaccines (USPSTF, CDC), each with a source |
+| Need entry | ✅ Unwell / okay / not sure; one symptom page by body part; emergencies detected as you pick, with call buttons |
+| Care today | ✅ Find care today → urgent care search; no built-in real directory, needs an API key |
+| While searching | ✅ Deterministic "What to expect": where to go, FAIR Health example fees run through your plan, what to bring |
+| A. Has insurance | ✅ What we know, questions to confirm, plan tips; ⚠️ the profile stores only the plan name, copay numbers still to add |
+| B. No insurance | ✅ Check school enrollment first, cheapest first, four resources (HRSA, NAFC, IRS, CMS) and scripts |
+| C. Choosing a plan | ✅ Compare up to three plans' yearly totals on expected care; unknowns are never ranked |
+| After the visit | ✅ New medicines, follow-ups and conditions merge into the profile as new to-dos |
+| Bill / EOB reading | ❌ `bills.py` is a draft, not in the UI |
+| Video, Devpost copy, user interviews | ❌ Not done |
+
+60 tests, all passing.
 
 ## 2b. Original MVP demo flow (draft, partly unbuilt)
 

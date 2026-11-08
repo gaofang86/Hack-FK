@@ -1,8 +1,8 @@
 # FirstVisit
 
-A local healthcare-navigation prototype for international students in Boston. Choose a location, tell the app whether you have insurance, add optional private context, and compare care options by personal cost, language, patient reviews, and known distance.
+**A private health companion for people new to US healthcare.** FirstVisit starts with you and your health. It keeps an encrypted health profile on your own computer, tells you what to do next, helps you choose where to go and what it will cost, and gets more useful after every visit.
 
-The first supported visit types are adult primary-care appointments and primary-care follow-ups. This is a functioning prototype, not a clinically validated triage system or a live insurance marketplace.
+Built for Hack1984 (Privacy-First track), first for international students in Boston. This is a working prototype, not a clinical product: it never diagnoses, and every suggestion comes from fixed rules with an official source.
 
 ## Start
 
@@ -13,80 +13,116 @@ python3 -m pip install -r requirements.txt
 python3 run.py
 ```
 
-Open http://127.0.0.1:8766. The server binds only to loopback. Choose your own vault passphrase at the review step. No account is created with an external service. The passphrase has no recovery mechanism. Do not commit the vault or `.env` file.
+Open http://127.0.0.1:8766. The first time, you build your health profile and choose a passphrase that encrypts it. There's no account and no server-side copy. The passphrase can't be recovered; "Start a new profile" on the unlock page erases the old one. Don't commit the vault or `.env`.
 
-To use a temporary, unlocked test workspace instead:
+To try it with fictional data instead:
 
 ```sh
 python3 run.py --preview
 ```
 
-Open http://127.0.0.1:8767. This uses a disposable vault, disables public search credentials, and displays a test banner. Use only synthetic information. If it locks, the test-only passphrase is `firstvisit-preview-only`. Normal startup does not use this passphrase or this vault.
+Open http://127.0.0.1:8767. This uses a disposable vault that never locks itself, turns off public search, and shows a "Temporary preview" label. Use only made-up details. If you lock it, the test passphrase is `firstvisit-preview-only` (shown on the unlock page). Inside a visit, "Explore a fictional example" loads fictional Boston clinics and a fictional plan.
 
-## Actual user flow
+## How it works
 
-1. Start with you and your health: age, what you need help with, and how you feel right now (a symptom checklist, or "nothing feels wrong"). Optional history and medications stay local. A fixed set of local rules (`app/triage.py`) checks for warning signs first. Emergencies show 911 / ER / 988 / Poison Control and never reach price comparison; same-day needs are pointed to urgent care or a campus clinic. Nothing in this step is sent anywhere.
-2. Choose your language and whether you already have insurance.
-   - Yes: enter the exact plan and known service benefits.
-   - No: continue with self-pay, or enter a plan to explore buying coverage.
-3. Choose when and where: visit date, budget, ranking preference, then city/state and optional ZIP. Location is the only detail a public search uses. Device coordinates are optional and stay local.
-4. Create/unlock the encrypted vault. Review the exact public queries and recipients. Choose live discovery when configured, or the local directory only.
-5. Compare source-labeled results. Missing prices, review ratings, service availability and network status stay unknown.
-6. Add a scoped quote and exact-plan network confirmation for a specific provider/location/service. The app labels these user-entered and recalculates.
-7. Compare the same visit under self-pay and an entered insurance plan, including the selected number of premium payments. A negative saving appears as a higher cost.
-8. Prepare a call script locally; optionally use Ollama for a personalized draft. Visit the source/booking site yourself. Record the confirmation and next steps in the care journey.
-9. Lock the vault or let the inactivity timer lock it. Resume through My care journeys after unlocking.
+### 1. Your health profile (the part that accumulates)
 
-## What is real, manual, and synthetic
+Stored only in the encrypted vault:
+
+- Birth year, optional sex (only used for sex-specific screenings), preferred language
+- Ongoing conditions, allergies
+- Medications, with when each runs out
+- Follow-ups a clinician asked for, with due dates
+- Coverage: insured, not insured, or choosing a plan
+
+The home page ("Welcome back") shows:
+
+- **Your to-dos.** Personal ones first (refills due within 14 days, follow-ups due within 30 days, overdue ones in red), then checkups and vaccines for your age and sex from the [USPSTF A and B recommendations](https://www.uspreventiveservicestaskforce.org/uspstf/recommendation-topics/uspstf-a-and-b-recommendations) and the [CDC adult immunization schedule](https://www.cdc.gov/vaccines/hcp/imz-schedules/adult-age.html). Each item links its source and can be ticked off.
+- **Better choices.** For example: preventive care is often free in-network ([HealthCare.gov](https://www.healthcare.gov/coverage/preventive-care-benefits/)); community health centers charge by income ([HRSA](https://findahealthcenter.hrsa.gov/)).
+- **Your visits.** A timeline of past visits.
+- **What we know.** Every saved item, each with Forget, plus "Forget everything".
+
+### 2. What do you need today?
+
+- **I feel unwell** or **I'm not sure:** one page, "What's bothering you?", grouped by body part (chest and breathing, head, belly, arms and legs, and so on). Serious and everyday problems sit together. Fixed local rules (`app/triage.py`) check each pick and any typed text right away:
+  - **Emergency** (for example chest pain, throwing up blood, thoughts of self-harm): call buttons for 911, 988 or Poison Control. Price comparison is blocked, in the browser and on the server.
+  - **Care today** (for example an eye injury): "Find care today" looks for urgent care and campus clinics.
+  - Otherwise you continue to planned care.
+- **I'm okay:** pick a checkup, refill or follow-up. No symptom questions.
+
+Age, language, coverage, conditions and medications are filled in from your profile.
+
+### 3. When and where
+
+Visit date, what matters most (fit, price, rating, distance), budget, then location. **Location is the only detail a public search ever uses.** You see the exact query and recipients before anything is sent, and you can choose the local directory only.
+
+### 4. What to expect (while the search runs)
+
+Computed with fixed rules on your device, with no model and no network. It shows where you could go, in order, and what you might pay: [FAIR Health's](https://www.fairhealthconsumer.org/en/insurance-basics/healthcare/emergency-care-and-urgent-care) example fees (urgent care $300, ER $1,000) run through your own plan. It's labeled as an illustration, not a quote. A copay plan never gets a guessed ER cost. It also covers what to bring and what to ask.
+
+### 5. Results: different help for each coverage situation
+
+| Situation | What you see first |
+| --- | --- |
+| **A. Has insurance** | What we know about your plan, questions to confirm before you go (copyable), and tips: use in-network care; preventive care may be free |
+| **B. No insurance** | Check you're not already enrolled by your school; cheapest options first; [community health centers](https://findahealthcenter.hrsa.gov/), [free clinics](https://nafcclinics.org/find-clinic/), [hospital financial assistance](https://www.irs.gov/charities-non-profits/financial-assistance-policies-faps), [Good Faith Estimates](https://www.cms.gov/newsroom/fact-sheets/no-surprises-understand-your-rights-against-surprise-medical-bills); scripts for asking about price and help |
+| **C. Choosing a plan** | Everything in B, plus **Compare plans**: pick the care you expect this year (pre-filled from your profile), enter up to three plans, and get a yearly total = premiums + care, capped at the out-of-pocket maximum. A plan with unknown or uncovered care is never ranked. |
+
+Below that is the shortlist: personal cost, language, rating and distance, each labeled with its source. Unknown stays unknown, never $0. You can add a confirmed quote, prepare a call script (template, or a local Ollama draft), and track the appointment.
+
+### 6. After the visit
+
+"I went · record the visit" (or "+ Record a visit" on home) asks when, where, why and what the clinician said. Then it asks about new medicines, new follow-ups, new conditions, and which existing follow-up this visit completed. They merge into your profile without duplicates and become your next to-dos.
+
+## What is real, manual, and fictional
 
 | Capability | Current implementation |
 | --- | --- |
-| Intake, branch navigation and preferences | Working local UI and API |
-| Persistence | AES-256-GCM vault, scrypt key derivation, restrictive file permissions, lock and inactivity timeout |
-| Boston directory | Small sourced directory with official links; no invented real prices, ratings, availability or networks |
-| Live public discovery | Tavily and/or Exa adapter; requires your own API key; results are leads needing confirmation |
-| Personal prices | Deterministic copay or deductible/coinsurance calculation using entered benefits and provider-specific evidence |
-| Price / network evidence | User-confirmed quotes; source, date, service and plan attached |
-| Reviews | Unknown unless supplied with a source URL/count; demo ratings are synthetic |
-| Distance | Straight-line distance only when both coordinates exist; demo provider coordinates are synthetic |
-| Local model | Ollama adapter; explicitly labeled built-in template when unavailable; no cloud fallback |
-| Booking | Preparation and external handoff, followed by user-recorded confirmation; no automatic booking |
-| Fictional example | Separate mode with four fictional Boston providers and a fictional plan; visible labels throughout |
-
-An insurance card/SBC alone is not enough to establish a personal total. For deductible-based calculations, enter the applicable allowed amount, current remaining deductible, coinsurance, and remaining out-of-pocket limit. For the copay rule, confirm that the deductible does not apply to this service. Both require service-scoped network evidence. Network/price evidence older than 30 days relative to the visit date requires reconfirmation in this prototype; this is a product freshness policy, not a guarantee.
-
-New-plan comparisons include ONE specified visit plus N premium payments. They are not a whole-year care forecast, do not infer subsidies or eligibility, and do not model family benefits, coordination of benefits, out-of-network balance billing, deductible-then-copay plans, extra tests, or benefit-year changes. Visits before coverage starts or after an entered end date do not receive an insured estimate. Plans with unsupported benefit structures need manual review.
-
-For an existing insured person, the shortlist compares visit-level cash and insured shares. Choosing cash can affect deductible credit; ask the plan. The premium-inclusive panel is a separate scenario, not advice to cancel existing coverage.
+| Profile, to-dos, visits, intake, safety check, scenarios, plan comparison | Working local UI and API |
+| Storage | AES-256-GCM vault, scrypt key, file mode 0600; auto-lock after 15 idle minutes (not in preview) |
+| Safety rules | Fixed rules in `app/triage.py`; not clinically validated |
+| To-do rules | Fixed age and sex rules in `app/health.py`, each with a source checked 2026-11-07 |
+| Boston primary-care directory | Two real clinics with official links; no invented prices, ratings or networks |
+| Same-day directory | None in real mode; real urgent care results come only from live search. Demo mode has three fictional same-day clinics |
+| Live search | Tavily and/or Exa; needs your own API key; results are leads to confirm |
+| Personal prices | Deterministic copay or deductible/coinsurance math on your entered benefits and confirmed quotes |
+| Reviews and distance | Unknown unless sourced; demo values are fictional |
+| Local model | Ollama on loopback only, for visit-prep drafts; clearly labeled template when unavailable; no cloud fallback |
+| Booking | You book on the provider's site, then record it; no automatic booking |
 
 ## Connect services
 
-Copy `.env.example` to `.env` and add either `TAVILY_API_KEY` or `EXA_API_KEY`. Restart the server. Public queries use only city/state/ZIP and a general primary-care category, disclosed before sending. The local ranking engine uses private information after discovery.
-
-Install Ollama from its official distribution, then pull the configured model:
+Copy `.env.example` to `.env` and add `TAVILY_API_KEY` or `EXA_API_KEY`, then restart. For local drafts, install Ollama and run:
 
 ```sh
 ollama pull qwen2.5:3b
 ```
 
-Ollama must be running at the loopback URL in `.env`. The default model is small for a laptop; the presence of a local model does not establish medical competence. Its connected task drafts visit preparation, without deciding clinical appropriateness, prices or network status. Review model text before sharing.
+## Privacy
 
-## Public plan data strategy
+- Every outbound app request goes through `app/egress.py`. It checks the destination and the offline switch, URL-decodes and scans URLs, headers and bodies for your private values, refuses redirects, and records sent, blocked and failed attempts in a ledger.
+- Protected values include your profile (conditions, medications, allergies, follow-ups), visit reasons and notes, and the symptoms you picked.
+- The local model only accepts loopback addresses and bypasses HTTP proxies.
+- The app loads no third-party scripts, fonts, analytics or images, and keeps no health data in browser storage.
 
-Use official plan-year documents and confirmed member details, with source and effective dates. Do not infer a new year's benefits from an old PDF. This build links to:
+**Scope.** The ledger covers the app's own gateway, not the whole operating system. The static import audit checks that only `egress.py` opens connections; it isn't a full security audit or a semantic PHI detector. Network integrations were tested against local fakes.
 
-- [Northeastern student plan and benefits](https://studenthealthplan.northeastern.edu/)
-- [Massachusetts Health Connector plan comparison](https://betterhealthconnector.com/compare-plans)
-- [Health Connector provider directory](https://providerdirectory.mahealthconnector.org/)
-- [How total health costs work](https://www.healthcare.gov/choose-a-plan/your-total-costs/)
+## Code map
 
-Zocdoc is useful for finding providers, and offers [verification for selected plans](https://www.zocdoc.com/patient-help/en/articles/16557288-what-is-the-in-network-promise). Scraping public provider pages does not provide that member verification or a personalized premium quote. No Zocdoc scraper, insurer enrollment API, or licensed review feed is included. Public-provider discovery and plan-benefit ingestion should remain separate integrations.
+| File | What it does |
+| --- | --- |
+| `app/health.py` | Profile, to-do and better-choice rules, visit recording |
+| `app/triage.py` | Safety rules and warning-word scan |
+| `app/navigation.py` | Intake validation and ranking |
+| `app/benefits.py` | Visit cost arithmetic |
+| `app/expect.py` | The "what to expect" page |
+| `app/scenarios.py` | A/B/C guidance and plan comparison |
+| `app/egress.py` | The only network gateway, with DLP and ledger |
+| `app/store.py` | Encrypted vault |
+| `app/server.py` | Local HTTP API |
+| `static/` | The whole UI (no build step) |
 
-## Privacy scope
-
-External app requests pass through `app/egress.py`. It checks destination, offline state, and private-value matches in URLs, headers and bodies, disables redirects, and records sent/blocked/failed attempts. Local model requests reject non-loopback destinations and bypass HTTP proxies. Keys are redacted from the visible ledger. The application serves no third-party scripts, fonts, analytics or images, and does not use browser localStorage for health data.
-
-The ledger records app-gateway activity. The static import audit is NOT proof of process/OS network isolation, nor a complete semantic PHI detector. Network integrations were tested with local fake services. Production hardening, clinical review and real service/provider validation remain outstanding. External source links and OS geolocation have their own behavior; the app's ledger does not capture those requests.
+`app/bills.py` and `app/costs.py` are early drafts. They aren't connected yet.
 
 ## Tests
 
@@ -96,6 +132,4 @@ python3 scripts/audit_egress.py
 node --check static/app.js
 ```
 
-Tests cover insured/self-pay branches, benefit arithmetic, coverage dates, unknowns, premium-inclusive comparisons, ranking changes, quote scope, encrypted persistence, booking confirmation, cross-origin/rebinding controls, request disclosure, and HTTP search/model integration with local fakes. The HTTP suite needs permission to bind loopback ports in a sandbox.
-
-The older `triage.py`, `bills.py` and `costs.py` scaffold is not connected to this UI. It has not been validated as a clinical product. The new calculation module is `benefits.py`.
+There are 60 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
