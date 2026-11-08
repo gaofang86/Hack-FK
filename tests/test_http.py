@@ -91,6 +91,8 @@ class HttpTests(unittest.TestCase):
             self.assertIn('class Dictation',response.read().decode())
         with urlopen(self.base+'/i18n.js') as response:
             self.assertIn('interfaceText',response.read().decode())
+        with urlopen(self.base+'/completion.js') as response:
+            self.assertIn('suggestCompletion',response.read().decode())
 
     def test_cross_origin_and_rebinding_refused(self):
         for headers in ({},{"X-FirstVisit":"local","Origin":"https://attacker.example"},{"X-FirstVisit":"local","Host":"attacker.example"}):

@@ -1,10 +1,10 @@
 {
   "passed": true,
-  "checked_at_utc": "2026-11-08T09:05:33.892672+00:00",
+  "checked_at_utc": "2026-11-08T09:15:34.186414+00:00",
   "scope": "Fresh temporary source copy and virtual environment; no .env, patient vault, model or real API credentials copied.",
   "python": "3.13.3",
   "elapsed_seconds": 7.8,
-  "tests": "----------------------------------------------------------------------\nRan 112 tests in 4.283s\n\nOK",
+  "tests": "----------------------------------------------------------------------\nRan 112 tests in 4.166s\n\nOK",
   "network_import_audit": true,
   "javascript_syntax": true,
   "privacy_receiver": true,

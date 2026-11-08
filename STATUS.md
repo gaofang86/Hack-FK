@@ -125,3 +125,16 @@ is stored in localStorage; care language and dictation language are independent.
 Protected clinical/source text, user drafts, values and provider names are not
 automatically translated. Five locale checks cover both modes, typography copy,
 source preservation, reversible in-place changes and preference-only storage.
+
+## Inline suggestions and published demo
+
+The source owner explicitly authorized publishing the identity-reduced report at
+`docs/demo/firstvisit-lab-demo.pdf`. It retains actual source values and is not
+claimed synthetic or guaranteed anonymous. The original source remains outside Git.
+The uploaded copy passed the same local report-journey acceptance.
+
+Homepage ghost text uses local phrase rules and scenario context, not a network or
+model request. Tab accepts only a current end-of-input suggestion; Escape dismisses,
+Shift+Tab and ordinary Tab preserve navigation when no suggestion is available.
+Text selection, IME composition, stale edits, scrolling and teardown are covered by
+five completion checks. Real-browser positioning remains outside unit-test scope.

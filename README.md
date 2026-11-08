@@ -283,7 +283,7 @@ python3 scripts/start_local_demo.py
 Open http://127.0.0.1:8768. This uses a persistent encrypted vault outside the repo,
 asks for your own passphrase and loads no public-search credentials. It does not
 replace the separate disposable fictional preview on 8767. Select a report yourself;
-no real report is bundled or committed by this feature.
+Personal imports are not added to Git. The separately authorized demo copy is provided under `docs/demo`.
 
 Local report acceptance (output contains counts only, not lab values):
 
@@ -316,3 +316,19 @@ Each has a short description and a contextual writing prompt. Choosing one chang
 the prompt, not the user's words. The choice is optional: free-text-only requests
 use a general task and can still add reports or enter the health-needs flow later.
 Resuming an existing saved task is a separate control, not a follow-up category.
+
+## Published demo report and inline wording suggestions
+
+The source owner explicitly authorized publishing the identity-reduced PDF at
+[docs/demo/firstvisit-lab-demo.pdf](docs/demo/firstvisit-lab-demo.pdf). It retains real
+source results and is not described as synthetic or guaranteed anonymous. The
+original report and private local vault are not included. Import the sample using
+**Add lab PDF** and review the rows before saving.
+
+The homepage also offers local gray inline wording suggestions. They follow the
+current text and chosen starting point, and only appear with a collapsed caret at
+the end. Tab accepts a visible suggestion, Escape dismisses it, and Shift+Tab or
+Tab without a suggestion retains normal focus navigation. A small accept button
+supports users without a Tab key. IME composition and text selections are respected.
+No model or external service receives text for completion, and suggestions supply
+phrasing rather than invented symptoms, dates, diagnoses or insurance facts.

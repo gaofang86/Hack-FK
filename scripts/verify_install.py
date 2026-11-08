@@ -42,7 +42,8 @@ def main():
         run(['node','--check','static/navigation.js'],source)
         run(['node','--check','static/dictation.js'],source)
         run(['node','--check','static/i18n.js'],source)
-        run(['node','--test','tests/test_navigation_ui.cjs','tests/test_personalized_ui.cjs','tests/test_care_today_ui.cjs','tests/test_dictation.cjs','tests/test_home_journey_ui.cjs','tests/test_i18n.cjs'],source)
+        run(['node','--check','static/completion.js'],source)
+        run(['node','--test','tests/test_navigation_ui.cjs','tests/test_personalized_ui.cjs','tests/test_care_today_ui.cjs','tests/test_dictation.cjs','tests/test_home_journey_ui.cjs','tests/test_i18n.cjs','tests/test_completion.cjs'],source)
         privacy=json.loads(run([python,'scripts/verify_privacy.py'],source))
         versions=run([python,'-m','pip','freeze'],source).splitlines()
         report={'passed':True,'checked_at_utc':datetime.now(timezone.utc).isoformat(),

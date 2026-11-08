@@ -483,7 +483,7 @@ def make_handler(app):
                     return self.send(500, {"error": "The local operation failed. Your saved information is still in the vault."})
             if self.command != "GET":
                 return self.send(405, {"error": "Method not allowed"})
-            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/navigation.js": "navigation.js", "/dictation.js": "dictation.js", "/i18n.js": "i18n.js", "/styles.css": "styles.css"}
+            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/navigation.js": "navigation.js", "/dictation.js": "dictation.js", "/i18n.js": "i18n.js", "/completion.js": "completion.js", "/styles.css": "styles.css"}
             file = assets.get(parsed.path)
             if not file:
                 return self.send(404, {"error": "Not found"})
