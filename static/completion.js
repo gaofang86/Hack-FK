@@ -52,6 +52,15 @@ function suggestCompletion(value,{kind='general',locale='en',maxLength=2000}={})
  return '';
 }
 
+// Deterministic routing of free text to a starting category. Symptoms win so the safety path is never skipped.
+const KIND_RULES=[
+ ['concern',/\b(pain|hurts?|sick|fever|cough|symptoms?|rash|ache|aching|dizzy|bleeding|vomit|nausea|injur|swollen|bothered)\b|疼|痛|发烧|咳嗽|不舒服|症状|头晕|受伤|恶心/i],
+ ['follow_up',/\b(follow[- ]?up|refill|results?|reports?|labs?|referral|come back|re-?check)\b|my doctor (asked|told|recommended|said|wants)|复诊|续药|报告|结果|转诊|医生(让|建议|说)/i],
+ ['insurance',/\b(insurance|insured|copay|deductible|coinsurance|premium|bills?|costs?|price|prices|how much|afford|self-pay|pay for)\b|保险|费用|多少钱|自费|报销|保费|账单/i],
+ ['first_visit',/\b(regular doctor|primary care|pcp|check-?up|physical|vaccines?|screenings?|new to|first time|family doctor)\b|家庭医生|固定医生|体检|疫苗|筛查|第一次/i]
+];
+function inferKind(text){if(typeof text!=='string'||!text.trim())return '';for(const [kind,rule] of KIND_RULES)if(rule.test(text))return kind;return '';}
+
 class GhostCompletion{
  constructor({input,prefix,suggestion,overlay,button,getContext=()=>({}),delay=180}){
   Object.assign(this,{input,prefix,suggestion,overlay,button,getContext,delay});this.current='';this.dismissed=null;this.composing=false;this.events=[];
@@ -90,4 +99,4 @@ class GhostCompletion{
  clear(){clearTimeout(this.timer);this.current='';this.suggestion.textContent='';this.overlay.hidden=true;if(this.button)this.button.hidden=true;}
  destroy(){this.clear();this.resizeObserver?.disconnect();for(const [target,event,handler]of this.events)target.removeEventListener(event,handler);this.events=[];}
 }
-if(typeof module!=='undefined')module.exports={suggestCompletion,GhostCompletion};
+if(typeof module!=='undefined')module.exports={suggestCompletion,GhostCompletion,inferKind};

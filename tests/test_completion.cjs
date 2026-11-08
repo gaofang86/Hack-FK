@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),test=require('node:test');
-const {suggestCompletion,GhostCompletion}=require('../static/completion.js');
+const {suggestCompletion,GhostCompletion,inferKind}=require('../static/completion.js');
 
 test('suggestions continue the current sentence and change with context',()=>{
  assert.equal(suggestCompletion('I need'),' help finding a doctor.');
@@ -51,4 +51,14 @@ test('Escape dismisses without changing input and stale context cannot be accept
 test('composition hides hints; scroll mirrors the input; destroy removes listeners',()=>{
  const f=fixture();f.ghost.refresh();f.events.get('compositionstart')();f.ghost.refresh();assert.equal(f.overlay.hidden,true);
  f.input.scrollTop=30;f.events.get('scroll')();assert.equal(f.overlay.scrollTop,30);f.ghost.destroy();assert.equal(f.events.size,0);
+});
+
+test('free text routes to a starting category; symptoms always win',()=>{
+ assert.equal(inferKind('i am not sure how my insurance works'),'insurance');
+ assert.equal(inferKind('I need a refill of my prescription'),'follow_up');
+ assert.equal(inferKind('My doctor asked me to come back'),'follow_up');
+ assert.equal(inferKind('I want a regular doctor and a checkup'),'first_visit');
+ assert.equal(inferKind('I have chest pain and wonder what it costs'),'concern');
+ assert.equal(inferKind('我想知道看病多少钱'),'insurance');assert.equal(inferKind('我头疼'),'concern');
+ assert.equal(inferKind('hello'),'');assert.equal(inferKind(''),'');
 });
