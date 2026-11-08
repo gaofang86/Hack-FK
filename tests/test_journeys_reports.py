@@ -66,6 +66,16 @@ class JourneyTests(unittest.TestCase):
         self.assertNotIn('12.34',note['text'])
         self.assertTrue(dlp_violations({'query':'12.34 mg/dL'},self.app.store.data))
         self.assertTrue(dlp_violations({'query':j['goal']},self.app.store.data))
+    def test_saved_task_keeps_its_kind_and_follow_ups_are_not_called_new_patients(self):
+        j=self.task('follow_up');raw=health_first(service='follow_up',need='follow_up');raw['demo']=False
+        preview=self.post('/api/preview',**raw,journey_id=j['id'])
+        case=self.post('/api/search',token=preview['token'],approved=True,live=False)
+        summary=next(c for c in self.get('/api/state')['cases'] if c['id']==j['id'])
+        self.assertEqual(summary['kind'],'follow_up')
+        reasons=[r for row in case['results'] for r in row['reasons']]
+        self.assertTrue(reasons)
+        self.assertFalse([r for r in reasons if 'new-patient' in r.lower()])
+        self.assertIn('Appointment availability needs confirmation',reasons)
     def test_forget_clears_report_and_derived_preparation_then_cannot_restore(self):
         j=self.task();_,j=self.attach(j);rid=j['reports'][0]['id']
         self.app.get_journey(j['id'])['preparation']={'personal_note':'12.34 mg/dL'}

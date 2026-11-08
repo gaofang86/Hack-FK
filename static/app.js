@@ -28,7 +28,7 @@ function routeKey() {
 }
 function pageSnapshot(withForms=false) {
   const data={};
-  for(const k of ['view','step','sub','input','draft','visit','plans','sbc','expect','found','safety','preparingProvider','journey','reportDraft','activeJourney','homeGoal','homeKind'])data[k]=S[k]??null;
+  for(const k of ['view','step','sub','input','draft','visit','plans','sbc','expect','found','safety','preparingProvider','journey','reportDraft','activeJourney','homeGoal','homeKind','profileFocus'])data[k]=S[k]??null;
   data.caseId=S.current?.id||null;
   data.open=[...S.open];
   data.formValues=withForms?[...document.querySelectorAll('#app form input[name], #app form select[name], #app form textarea[name]')]
@@ -49,7 +49,7 @@ function backLabel() {
   return '返回 / Back';
 }
 function navigationBar() {
-  if(S.view==='gate'||(S.view==='profile'&&!S.state.profile_ready))return '';
+  if(S.view==='gate'||(S.view==='profile'&&!S.state.vault_exists))return '';
   const back=trail.canGoBack||S.view!=='home';
   return `<nav class="page-navigation" aria-label="Page navigation">${back?`<button type="button" class="back-link" data-action="page-back">← ${backLabel()}</button>`:'<span>我的健康 / My health</span>'}${S.view!=='home'?'<button type="button" class="text-button" data-action="home-page">我的健康首页 / My health home</button>':''}<span class="navigation-note">${S.view==='wizard'&&S.step<4?'返回可修改，已填内容会保留 / Your entries stay here':'已保存的任务可随时继续 / Saved tasks stay available'}</span></nav>`;
 }
@@ -65,7 +65,7 @@ async function restorePage(id) {
       try{current=await api('/api/case?id='+encodeURIComponent(data.caseId));}
       catch{S.view='home';S.expect=null;S.current=null;S.health=await api('/api/profile');render();toast('这条任务已不可用。 / This journey is no longer available.');return;}
     }
-    for(const k of ['view','step','sub','input','draft','visit','plans','sbc','expect','found','safety','preparingProvider','journey','reportDraft','activeJourney','homeGoal','homeKind'])S[k]=data[k];
+    for(const k of ['view','step','sub','input','draft','visit','plans','sbc','expect','found','safety','preparingProvider','journey','reportDraft','activeJourney','homeGoal','homeKind','profileFocus'])S[k]=data[k];
     S.current=current;S.preview=null;S.open=new Set(data.open);S.health=await api('/api/profile');
     if(S.found?.id)S.found=await api('/api/case?id='+encodeURIComponent(S.found.id));
     if(S.journey?.id)S.journey=await api('/api/journey?id='+encodeURIComponent(S.journey.id));
@@ -339,7 +339,7 @@ function renderHome(){
   const list=(arr)=>arr.length?arr.map(t=>`<span class="tag">${esc(t)}</span>`).join(''):'<span class="muted">None added</span>';
   $('#app').innerHTML=`<div class="home">
   ${homeComposer()}
-  <section class="form-card"><div class="form-card-head"><h3>Continue your care</h3><p>Saved tasks and the next action.</p></div>${(S.state.cases||[]).filter(c=>c.status!=='attended').length?(S.state.cases||[]).filter(c=>c.status!=='attended').map(c=>`<div class="visit-row"><div><strong><span>${esc(c.service)}</span>${c.city?` · <span data-i18n-keep>${esc(c.city)}</span>`:''} ${c.demo?'· Fictional demo':''}</strong><p>${esc(c.next_action||'Review your next step')}</p><button class="text-button" data-case="${esc(c.id)}">Continue journey →</button></div></div>`).join(''):'<p class="hint">No unfinished care journeys.</p>'}</section>
+  <section class="form-card"><div class="form-card-head"><h3>Continue your care</h3><p>Saved tasks and the next action.</p></div>${(S.state.cases||[]).filter(c=>c.status!=='attended').length?(S.state.cases||[]).filter(c=>c.status!=='attended').map(c=>`<div class="visit-row"><div><strong>${caseLabel(c)}${c.city?` · <span data-i18n-keep>${esc(c.city)}</span>`:''}${c.demo?' · <span>Fictional demo</span>':''}</strong><p>${esc(c.next_action||'Review your next step')}</p><button class="text-button" data-case="${esc(c.id)}">Continue journey →</button></div></div>`).join(''):'<p class="hint">No unfinished care journeys.</p>'}</section>
   <details class="example-drawer"><summary>先看看示例 / Explore an example</summary><p>Fictional student inputs with real clinic sources. This does not change your profile.</p><button type="button" class="secondary small" data-action="neu-example">Explore NEU / 02445</button></details>
   ${!S.state.profile_ready?'<details class="optional-profile"><summary>可选：补充可复用的健康信息 / Optional health profile</summary>':''}<div class="home-grid">
     <section class="form-card"><div class="form-card-head row"><h3>Your health</h3><button type="button" class="text-button" data-action="edit-profile">Edit</button></div>
@@ -362,7 +362,7 @@ function listRows(kind,rows){
   return `<div class="rows">${rows.map((r,i)=>`<div class="row-2">${field(la,`${kind}_${a}_${i}`,r[a],ta,'maxlength="160"')}${field(lb,`${kind}_${b}_${i}`,r[b],'date')}</div>`).join('')}</div><button type="button" class="secondary small" data-add-row="${kind}">+ Add ${kind==='med'?'medication':'follow-up'}</button>`;
 }
 function renderProfile(){
-  const d=S.draft, first=!S.state.vault_exists||!S.state.profile_ready;
+  const d=S.draft, first=!S.state.vault_exists;
   const coverage=card('Coverage','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${d.insurance==='yes'?'selected':''}" data-pins="yes"><span class="choice-radio"></span><strong>Yes</strong><span>I have a plan</span></button><button type="button" class="choice ${d.insurance==='no'?'selected':''}" data-pins="no"><span class="choice-radio"></span><strong>Not right now</strong><span>Self-pay, or choosing a plan</span></button></div>${d.insurance==='yes'?`<div class="sub-card"><p class="sub-title">Your plan</p>${field('Exact plan name','pplan_name',d.plan?.name||'','text','maxlength="120"')}</div>${sbcBox()}`:''}${d.insurance==='no'?`<label class="checkline"><input type="checkbox" name="wants_insurance" ${d.wants_insurance?'checked':''}><span>I’m thinking about getting a plan</span></label>`:''}`);
   if(S.profileFocus==='coverage'&&S.state.vault_exists){
     $('#app').innerHTML=`<div class="home narrow"><form id="profile-form"><p class="eyebrow">YOUR COVERAGE</p><h1 class="home-title">Your insurance</h1><p class="lede">Only this part is needed for your insurance questions. It stays encrypted on this device.</p>${coverage}<div class="form-actions"><button type="button" class="text-button" data-action="page-back">← Cancel</button><button type="submit" class="primary">Save ${icon('arrow')}</button></div></form></div>`;
@@ -409,7 +409,7 @@ async function saveProfile(){
     const plan=d.insurance==='yes'&&d.plan?.name?{rule:'copay',...d.plan}:(d.plan?.name?d.plan:null);
     S.health=await api('/api/profile',{birth_year:d.birth_year,sex:d.sex,language:d.language,conditions:d.conditions,allergies:d.allergies,medications:d.meds.filter(m=>m.name.trim()),follow_ups:d.fus.filter(f=>f.what.trim()),insurance:d.insurance,wants_insurance:d.insurance==='no'&&d.wants_insurance,plan});
     S.state=await api('/api/state');
-    if(S.profileFocus==='coverage'&&S.journey){S.profileFocus=null;S.journey=await api('/api/journey?id='+encodeURIComponent(S.journey.id));S.view='journey';render();window.scrollTo(0,0);toast('Saved. Your questions now match your coverage.');return;}
+    if(S.profileFocus==='coverage'&&S.journey){S.profileFocus=null;S.journey=await api('/api/journey?id='+encodeURIComponent(S.journey.id));trail.clear();S.view='journey';render();window.scrollTo(0,0);toast('Saved. Your questions now match your coverage.');return;}
     S.profileFocus=null; S.view='home'; render(); window.scrollTo(0,0); toast('Saved on this device.');
   });
 }
@@ -432,7 +432,7 @@ function readVisit(){
 function renderVisit(){
   const v=S.visit, open=(S.health?.profile?.follow_ups||[]);
   $('#app').innerHTML=`<div class="home narrow"><form id="visit-form"><p class="eyebrow">AFTER YOUR VISIT</p><h1 class="home-title">What happened at your visit?</h1><p class="lede">A minute now saves you from remembering later. It’s added to your encrypted health profile.</p>
-    ${card('The visit','',`<div class="form-grid">${field('When','v_date',v.date,'date',`required max="${today()}"`)}${field('Where','v_place',v.place,'text','maxlength="160" list="v-places" placeholder="Clinic or doctor"')}</div><datalist id="v-places">${v.places.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>${field('What it was for','v_reason',v.reason,'text','required maxlength="200"')}<label class="field"><span>What the clinician said <small>Optional · stays local</small></span><textarea name="v_notes" rows="3" maxlength="2000" placeholder="It’s an eye infection. Use the drops for a week.">${esc(v.notes)}</textarea></label>`)}
+    ${card('The visit','',`<div class="form-grid">${field('When','v_date',v.date,'date',`required max="${today()}"`)}${field('Where','v_place',v.place,'text','maxlength="160" list="v-places" placeholder="Clinic or doctor"')}</div><datalist id="v-places">${v.places.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>${field('What it was for','v_reason',v.reason,'text','required maxlength="200"')}<label class="field"><span>What the clinician said <small>Optional · stays local</small></span><textarea name="v_notes" rows="3" maxlength="2000" placeholder="Come back in 3 months. Get blood work before then.">${esc(v.notes)}</textarea></label>`)}
     ${card('New medicines','We’ll remind you before they run out.',listRows('med',v.meds))}
     ${card('Follow-ups','Did they ask you to come back, or get a test?',listRows('fu',v.fus)+(open.length?`<div class="sub-card"><p class="sub-title">Was this visit one of your follow-ups?</p>${open.map(f=>`<label class="checkline"><input type="checkbox" name="v_done" value="${esc(f.what)}" ${v.completed.includes(f.what)?'checked':''}><span>${esc(f.what)}</span></label>`).join('')}</div>`:''))}
     ${card('Anything new to remember?','Optional. A new ongoing condition, separated by commas.',`<label class="field"><span>New conditions</span><input name="v_conditions" value="${esc(v.conditions)}" maxlength="400" placeholder="Seasonal allergies"></label>`)}
@@ -444,7 +444,7 @@ async function saveVisit(){
   await work(async()=>{
     S.health=await api('/api/visit',{case_id:v.case_id,date:v.date,reason:v.reason,place:v.place,notes:v.notes,
       medications:v.meds.filter(m=>m.name.trim()),follow_ups:v.fus.filter(f=>f.what.trim()),conditions:v.conditions,completed_follow_ups:v.completed});
-    S.visit=null; S.current=null; S.state=await api('/api/state'); S.view='home'; S.justCreated=false; render(); window.scrollTo(0,0);
+    S.visit=null; S.current=null; S.state=await api('/api/state'); trail.clear(); S.view='home'; S.justCreated=false; render(); window.scrollTo(0,0);
     const a=S.health.visit.added, n=a.medications.length+a.follow_ups.length+a.conditions.length;
     toast(n?`Saved. ${n} ${n===1?'item was':'items were'} added to your profile.`:'Visit saved to your profile.');
   });
@@ -702,7 +702,7 @@ function candidateDialog(){
 }
 function answerDialog(id){
   const p=S.current.providers.find(p=>p.id===id);
-  openDialog('Record an office reply',`<p>${esc(p.name)} · ${esc(p.address)}</p><form id="answer-form">${select('Question','key',[['availability','New-patient / appointment availability'],['language','Language / interpreter support'],['referral','Referral / prior authorization'],['referral_action','Required referral / authorization obtained']],'availability')}${select('Answer','result',[['unknown','Still unknown / needs follow-up'],['yes','Yes'],['no','No']],'unknown')}<label class="field"><span>What they said / next action</span><textarea name="answer" maxlength="1500" required rows="3"></textarea></label>${field('Source / person contacted','source','','text','required maxlength="500"')}${field('Date checked','checked_on',today(),'date',`required max="${today()}"`)}<p class="hint">For referral: Yes means required, No means not required. For referral obtained: Yes means you have the required confirmation. For availability: No means no suitable appointment. These are your records, not independently verified. Price, service and insurance network use Add quote / confirmation.</p><button class="primary">Save reply</button></form>`,true);
+  openDialog('Record an office reply',`<p>${esc(p.name)} · ${esc(p.address)}</p><form id="answer-form">${select('Question','key',[['availability',S.current.input?.service==='follow_up'?'Appointment availability':'New-patient / appointment availability'],['language','Language / interpreter support'],['referral','Referral / prior authorization'],['referral_action','Required referral / authorization obtained']],'availability')}${select('Answer','result',[['unknown','Still unknown / needs follow-up'],['yes','Yes'],['no','No']],'unknown')}<label class="field"><span>What they said / next action</span><textarea name="answer" maxlength="1500" required rows="3"></textarea></label>${field('Source / person contacted','source','','text','required maxlength="500"')}${field('Date checked','checked_on',today(),'date',`required max="${today()}"`)}<p class="hint">For referral: Yes means required, No means not required. For referral obtained: Yes means you have the required confirmation. For availability: No means no suitable appointment. These are your records, not independently verified. Price, service and insurance network use Add quote / confirmation.</p><button class="primary">Save reply</button></form>`,true);
   $('#answer-form').addEventListener('submit',e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));work(async()=>{S.current=await api('/api/case/answer',{...b,id:S.current.id,provider_id:id});S.state=await api('/api/state');closeDialog();render();});});
 }
 function quoteDialog(id) {
@@ -726,10 +726,13 @@ function unlockDialog(after) {
   openDialog(S.state.vault_exists?'Unlock your private vault':'Your care, saved privately',S.state.vault_exists?`<form id="unlock-form">${field('Passphrase','passphrase','','password','required minlength="8" autocomplete="current-password"')}<button class="primary">Unlock</button></form>`:'<p>Start your care search to create an encrypted local vault at the review step.</p><button class="primary" data-action="close">Continue</button>');
   if($('#unlock-form'))$('#unlock-form').addEventListener('submit',e=>{e.preventDefault();const passphrase=e.target.elements.passphrase.value;work(async()=>{S.state=await api('/api/vault/unlock',{passphrase});closeDialog();renderHeader();if(after)await after();});});
 }
+const CASE_STATUS={planning:'Planning',comparing:'Comparing options',contacted:'Contacted',booked:'Booked',attended:'Visit recorded'};
+// Saved task label: the user's chosen starting point (current names), plus the searched service when the task has a shortlist.
+function caseLabel(c){const kind=c.kind&&JOURNEY_KINDS[c.kind];return kind&&kind!==c.service?`<span>${esc(kind)}</span> · <span>${esc(c.service)}</span>`:`<span>${esc(c.service)}</span>`;}
 async function savedDialog() {
   if(!S.state.unlocked)return unlockDialog(savedDialog);
   S.state=await api('/api/state');
-  openDialog('My care journeys',S.state.cases.length?`<div class="saved-list">${S.state.cases.map(c=>`<button data-case="${c.id}"><span>${esc(c.service)} ${c.demo?'· Demo':''}<small>${esc(c.city)} · ${new Date(c.created*1000).toLocaleDateString()}</small></span><span>${esc(c.status)} →</span></button>`).join('')}</div>`:'<p>Your saved searches and appointment steps will appear here.</p>');
+  openDialog('My care journeys',S.state.cases.length?`<div class="saved-list">${S.state.cases.map(c=>`<button data-case="${esc(c.id)}"><span>${caseLabel(c)}${c.demo?' · <span>Fictional demo</span>':''}<small>${c.city?`<span data-i18n-keep>${esc(c.city)}</span> · `:''}${new Date(c.created*1000).toLocaleDateString()}</small></span><span>${esc(CASE_STATUS[c.status]||c.status)} →</span></button>`).join('')}</div>`:'<p>Your saved searches and appointment steps will appear here.</p>');
 }
 async function privacyDialog() {
   if(!S.state.unlocked)return unlockDialog(privacyDialog);
@@ -776,7 +779,7 @@ document.addEventListener('click',event=>{
   if(action==='journey-prep')return showPersonalPreparation();
   if(action==='task-details')return work(async()=>{S.journey=await api('/api/journey?id='+encodeURIComponent(S.current.id));S.current=null;S.view='journey';S.expect=null;render();window.scrollTo(0,0);});
   if(action==='copy-personal-prep')return work(async()=>{await navigator.clipboard.writeText(prepText());toast('已复制；由你决定分享对象。 / Copied for you to share.');});
-  if(action==='journey-find'){if(S.journey.safety_notice?.level==='emergency')return toast('请先处理紧急警示 / Please address the emergency warning.');S.activeJourney=S.journey.id;S.input=fromProfile();S.input.description='';S.input.feel=['concern','general'].includes(S.journey.kind)?'unsure':'okay';S.input.need='';S.input.checks=[];if(['follow_up','report'].includes(S.journey.kind)){S.input.need='follow_up';S.input.service='follow_up';}if(S.journey.kind==='first_visit'){S.input.need='checkup';S.input.service='primary_care';}if(!S.input.insurance&&['insured','uninsured'].includes(S.journey.coverage_situation))S.input.insurance=S.journey.coverage_situation==='insured'?'yes':'no';S.input.none_reported=!['concern','general'].includes(S.journey.kind);S.safety=null;S.current=null;S.expect=null;S.preview=null;S.step=0;S.sub=['concern','general'].includes(S.journey.kind)||S.journey.safety_notice?'symptoms':'need';if(S.journey.safety_notice){S.input.description=S.journey.goal;S.safety=S.journey.safety_notice;}S.view='wizard';render();window.scrollTo(0,0);return;}
+  if(action==='journey-find'){if(S.journey.safety_notice?.level==='emergency')return toast('请先处理紧急警示 / Please address the emergency warning.');S.activeJourney=S.journey.id;S.input=fromProfile();S.input.description='';S.input.feel=['concern','general'].includes(S.journey.kind)?'unsure':'okay';S.input.need='';S.input.checks=[];if(['follow_up','report'].includes(S.journey.kind)){S.input.need='follow_up';S.input.service='follow_up';}if(S.journey.kind==='first_visit'){S.input.need='checkup';S.input.service='primary_care';S.input.checks=['checkup'];}if(!S.input.insurance&&['insured','uninsured'].includes(S.journey.coverage_situation))S.input.insurance=S.journey.coverage_situation==='insured'?'yes':'no';S.input.none_reported=!['concern','general'].includes(S.journey.kind);S.safety=null;S.current=null;S.expect=null;S.preview=null;S.step=0;S.sub=['concern','general'].includes(S.journey.kind)||S.journey.safety_notice?'symptoms':'need';if(S.journey.safety_notice){S.input.description=S.journey.goal;S.safety=S.journey.safety_notice;}S.view='wizard';render();window.scrollTo(0,0);return;}
   if(action==='edit-preferences')return preferencesDialog();
 
   if(action==='close')return closeDialog();

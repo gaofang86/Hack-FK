@@ -48,13 +48,13 @@ class App:
         summaries = []
         if self.store.unlocked:
             summaries = [dict(id=c["id"], city=c["input"]["city"], service=SERVICES[c["input"]["service"]],
-                              created=c["created"], demo=c["input"]["demo"], status=c.get("status", "comparing"),
+                              created=c["created"], demo=c["input"]["demo"], status=c.get("status", "comparing"), kind=c.get("kind"),
                               next_action=next_action(c, ranked(c)))
                          for c in self.store.data["cases"].values() if "input" in c]
             for c in self.store.data['cases'].values():
                 if 'input' not in c:
                     summaries.append(dict(id=c['id'], city='', service=journeys.KINDS.get(c.get('kind'), 'Care task'),
-                                          created=c['created'], demo=False, status=c['status'], next_action=journeys.next_step(c)))
+                                          created=c['created'], demo=False, status=c['status'], kind=c.get('kind'), next_action=journeys.next_step(c)))
         return dict(unlocked=self.store.unlocked, vault_exists=self.store.exists(), offline=self.egress.offline,
                     preview_mode=getattr(self, "preview_mode", False),
                     services=self.cfg.services(), cases=sorted(summaries, key=lambda c: -c["created"]), today=date.today().isoformat(),

@@ -8,7 +8,7 @@ function findCare(journey,profile={}){
 }
 test('follow-up and legacy report tasks open Find care on the follow-up need, not a blank new-patient choice',()=>{
  for(const kind of ['follow_up','report']){const S=findCare({id:'j',kind,goal:'x'});assert.equal(S.sub,'need');assert.equal(S.input.need,'follow_up');assert.equal(S.input.service,'follow_up');}
- const S=findCare({id:'j',kind:'first_visit',goal:'x'});assert.equal(S.input.need,'checkup');assert.equal(S.input.service,'primary_care');
+ const S=findCare({id:'j',kind:'first_visit',goal:'x'});assert.equal(S.input.need,'checkup');assert.equal(S.input.service,'primary_care');assert.equal(JSON.stringify(S.input.checks),'["checkup"]');
 });
 test('concern tasks still start at the symptom and safety check',()=>{
  const S=findCare({id:'j',kind:'concern',goal:'x'});assert.equal(S.sub,'symptoms');assert.equal(S.input.none_reported,false);
