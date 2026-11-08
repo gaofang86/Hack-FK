@@ -1,4 +1,4 @@
-"""On-device model via Ollama (default qwen2.5:3b). Loopback only, works with Wi-Fi off.
+"""On-device model via Ollama (default qwen3.5:2b). Loopback only, works with Wi-Fi off.
 
 The model never decides anything. Triage rules, costs and bill amounts are computed
 deterministically; the model only explains them, or translates a call script, in
@@ -6,6 +6,7 @@ your language. Every output says whether it came from the local model or a built
 template (English, Chinese and Spanish templates are bundled for offline use).
 """
 import json
+import re
 
 from .egress import EgressBlocked, EgressError
 
@@ -67,23 +68,25 @@ EN_DOCTOR_QS = ["What do you think is causing this?", "What should I do if it ge
 
 
 class LocalModel:
-    def __init__(self, egress, config):
+    def __init__(self, egress, config, *, model_name=None):
         self.egress, self.cfg = egress, config
+        self.model_name = model_name or config.ollama_model
 
     def status(self):
         try:
             tags = self.egress.local("GET", f"{self.cfg.ollama_url}/api/tags", timeout=3)
         except (EgressError, EgressBlocked, ValueError, TypeError) as e:
-            return {"available": False, "model": self.cfg.ollama_model, "reason": str(e)}
+            return {"available": False, "model": self.model_name, "reason": str(e)}
         names = [m.get("name", "") for m in tags.get("models", [])]
-        want = self.cfg.ollama_model
+        want = self.model_name
         ok = want in names or (":" not in want and any(n.split(":")[0] == want for n in names))
         return {"available": ok, "model": want, "installed": names,
                 "reason": "" if ok else f"Run: ollama pull {want}"}
 
     def generate(self, prompt, system="", max_tokens=400):
         res = self.egress.local("POST", f"{self.cfg.ollama_url}/api/generate", json_body={
-            "model": self.cfg.ollama_model, "prompt": prompt, "system": system, "stream": False,
+            "model": self.model_name, "prompt": prompt, "system": system, "stream": False,
+            "think": False,  # hidden reasoning would consume the token budget and return empty text
             "options": {"temperature": 0.2, "num_predict": max_tokens},
         })
         return (res.get("response") or "").strip()
@@ -91,7 +94,7 @@ class LocalModel:
     def structured(self, message, schema, system, *, context=None):
         """Bounded local extraction; callers must validate meaning and execute tools themselves."""
         res = self.egress.local("POST", f"{self.cfg.ollama_url}/api/chat", json_body={
-            "model": self.cfg.ollama_model, "stream": False, "format": schema,
+            "model": self.model_name, "stream": False, "format": schema, "think": False,
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": json.dumps({"user_text": message, "task_scope": context or {}}, ensure_ascii=False)}],
             "options": {"temperature": 0, "num_predict": 700},
@@ -99,14 +102,17 @@ class LocalModel:
         return json.loads(res["message"]["content"])
 
     def _try(self, prompt, system, fallback, max_tokens=400):
-        if self.status()["available"]:
+        status = self.status()
+        reason = status["reason"] or "no model output"
+        if status["available"]:
             try:
                 text = self.generate(prompt, system, max_tokens)
                 if text:
-                    return {"text": text, "source": f"local model ({self.cfg.ollama_model})"}
-            except (EgressError, EgressBlocked, ValueError, TypeError):
-                pass
-        return {"text": fallback(), "source": "built-in template"}
+                    return {"text": text, "source": f"local model ({self.model_name})"}
+                reason = "the model returned no text"
+            except (EgressError, EgressBlocked, ValueError, TypeError) as e:
+                reason = str(e)
+        return {"text": fallback(), "source": "built-in template (local model not used)", "fallback_reason": reason}
 
     # ---- tasks ----
     def explain_decision(self, decision, language):
@@ -126,18 +132,23 @@ class LocalModel:
                   f"Explain this to the student in {language}, and tell them what to do next.")
         return self._try(prompt, system, fallback, 320)
 
-    def translate_script(self, lines, language):
-        code = lang_code(language)
-        if code == "en":
-            return None
-        joined = "\n".join(lines)
-
-        def fallback():
-            return ("(Install Ollama with a local model to translate this into " + language + ".)")
-
-        system = (f"Translate each line into {language}. Keep names, numbers and insurance IDs unchanged. "
-                  "Output only the translated lines, one per line, in the same order.")
-        return self._try(joined, system, fallback, 400)
+    def bilingual_script(self, lines, language, fallback):
+        """Each fixed English line followed by its translation. Code assembles the script;
+        the model only translates, so it cannot add claims about coverage, price or availability."""
+        if lang_code(language) == "en":
+            return {"text": fallback, "source": "built-in template (already in English)"}
+        numbered = "\n".join(f"{i}. {line}" for i, line in enumerate(lines, 1))
+        system = (f"Translate each numbered line into {language}. Keep names, addresses, numbers and the numbering "
+                  "unchanged. Output only the numbered translated lines, nothing else.")
+        out = self._try(numbered, system, lambda: "", 600)
+        if out["source"].startswith("local model"):
+            found = dict(re.findall(r"^\s*(\d+)\s*[.)、．]\s*(.+?)\s*$", out["text"], re.M))
+            if all(str(i) in found for i in range(1, len(lines) + 1)):
+                return {"text": "\n\n".join(f"{line}\n{found[str(i)]}" for i, line in enumerate(lines, 1)),
+                        "source": out["source"]}
+            out["fallback_reason"] = "the translation did not line up with the script"
+        return {"text": fallback, "source": "built-in template (local model not used)",
+                "fallback_reason": out["fallback_reason"]}
 
     def explain_bill(self, parsed, flag_list, language):
         code = lang_code(language)

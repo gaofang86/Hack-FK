@@ -22,7 +22,8 @@ class Fake(BaseHTTPRequestHandler):
     def do_POST(self):
         body=json.loads(self.rfile.read(int(self.headers.get("Content-Length",0))))
         self.seen.append((self.path,body))
-        payload={"response":"LOCAL TEST DRAFT: Confirm the visit and ask about the full price."} if self.path=="/api/generate" else {
+        lines=[l.split(". ",1)[0] for l in body.get("prompt","").splitlines() if ". " in l]
+        payload={"response":"\n".join(f"{n}. LOCAL TEST TRANSLATION {n}" for n in lines)} if self.path=="/api/generate" else {
             "results":[{"url":"https://example.org/clinic","title":"Test source clinic","content":"Primary care in Boston. Call (617) 555-0100."}]}
         if self.path == "/api/chat":
             payload = {"message": {"content": json.dumps({"action": "propose_reply", "replies": [
@@ -38,7 +39,7 @@ class HttpTests(unittest.TestCase):
         cls.fake=ThreadingHTTPServer(("127.0.0.1",0),Fake)
         threading.Thread(target=cls.fake.serve_forever,daemon=True).start()
         cfg=Config();cfg.port=0;cfg.store_path=Path(cls.tmp.name)/"vault";cfg.exa_key="";cfg.tavily_key="test-key"
-        cfg.tavily_base=f"http://127.0.0.1:{cls.fake.server_port}";cfg.ollama_url=cfg.tavily_base;cfg.ollama_model="test-local"
+        cfg.tavily_base=f"http://127.0.0.1:{cls.fake.server_port}";cfg.ollama_url=cfg.tavily_base;cfg.ollama_model="test-local";cfg.ollama_agent_model="test-local"
         cls.app=App(cfg);cls.server=serve(cls.app,block=False);cls.base=f"http://127.0.0.1:{cls.server.server_port}"
         cls.request("/api/vault/create",{"passphrase":"disposable-test-passphrase"})
 
@@ -96,7 +97,11 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(all(p["description"] not in json.dumps(b) and p["history"] not in json.dumps(b) for b in requests))
         prep=self.request("/api/case/preparation",dict(id=result["id"],use_model=True))
         self.assertIn("local model",prep["source"])
-        self.assertIn("LOCAL TEST DRAFT",prep["text"])
+        self.assertIn("LOCAL TEST TRANSLATION 1",prep["text"])
+        self.assertIn("Are you accepting new adult patients",prep["text"])  # English line kept beside its translation
+        model_calls=json.dumps([b for path,b in Fake.seen if path=="/api/generate"])
+        self.assertIs(json.loads(model_calls)[-1]["think"],False)
+        self.assertTrue(p["description"] not in model_calls and p["history"] not in model_calls)
         privacy=self.request("/api/privacy")
         self.assertGreater(privacy["attempted"],0)
         self.assertNotIn("test-key",json.dumps(privacy))

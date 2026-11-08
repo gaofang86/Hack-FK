@@ -1,6 +1,6 @@
 # FirstVisit — submission copy draft
 
-Not submitted. Verify competition eligibility, deadline, required fields, links and track requirements before publication.
+Not submitted. Hack1984 deadline: Nov 8, 2026, 11:00 AM EST. Track: Privacy-first. A demo video is required for judging.
 
 ## Tagline
 
@@ -18,7 +18,7 @@ The initial example uses an illustrative Northeastern student near Brookline 024
 
 ## How we built it
 
-Python local HTTP server, vanilla JavaScript UI, AES-256-GCM encrypted vault with scrypt key derivation, local SBC text/PDF extraction, deterministic cost arithmetic and a single outbound gateway. Public-search integrations support Tavily and Exa, but real credentials and acceptance are pending. Ollama integration is optional and pending real local acceptance; the demonstrated preparation uses labeled templates.
+Python local HTTP server, vanilla JavaScript UI, AES-256-GCM encrypted vault with scrypt key derivation, local SBC text/PDF extraction, deterministic cost arithmetic and a single outbound gateway. Tavily and Exa returned public provider-search leads in a synthetic Brookline acceptance run; this does not verify provider claims. A local Ollama model (`qwen3.5:2b`) translates the fixed call script into the user's language on-device, with Wi-Fi off. It never receives health history and cannot change costs or safety rules. When free-form drafts invented facts in testing, we limited the model to line-by-line translation with a labeled template fallback.
 
 ## Privacy evidence
 
@@ -34,12 +34,12 @@ Engineering observation: the useful workflow is not just a ranked list; it is co
 
 ## Next steps
 
-Collect target-user observations and real provider/insurer confirmations; complete search API and local-model acceptance; expand service and directory coverage only where supported.
+Collect target-user observations and real provider/insurer confirmations; expand service and directory coverage only where supported.
 
 ## Publication fields to finish
 
 - Repository URL and access: verify after intended changes are committed/pushed.
 - Video URL: recording/upload pending; use DEMO_SCRIPT.md.
 - Team names/roles and asset credits: user-supplied details required.
-- Track selection: match verified rules; do not claim live sponsor integration if only fake-service tests were run.
+- Track selection: Privacy-first. Tavily/Exa live search was tested with synthetic inputs (see STATUS.md); don't claim more than that.
 - User quotes, traction and customer claims: add only with evidence and consent.

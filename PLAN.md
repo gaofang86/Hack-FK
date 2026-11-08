@@ -87,11 +87,11 @@
 本机处理、透明费用情景与持续任务记录是待验证的组合价值，不宣称竞品或通用助手无法实现。
 
 
-## 9. 待做的集成与验收
+## 9. 集成目标与验收
 
-以下两项保留为后续工作；当前先完成不依赖它们的产品流程。
+当前实现和验证证据见 [STATUS.md](STATUS.md)。以下标准定义集成所需的目标证据。
 
-| 待做项 | 目标 | 完成标准 | 未接入时的可用路径 |
+| 集成 | 目标 | 验收标准 | 未接入时的可用路径 |
 |---|---|---|---|
 | Ollama 本地模型 | 在本机生成可审阅的看病准备和中文草稿 | 安装并准备模型；验证本机调用、中文输出、断网运行、失败回退；不改变安全提醒和费用计算，不回退云端 | 明确标注的内置模板 |
 | Tavily／Exa 搜索 API | 在应用内发现公开诊所线索 | 配置至少一个服务的 API key（本机 `.env`，不入库）；以 NEU／02445 的公开查询验证真实结果、披露预览、账本、失败和离线处理 | 官方来源本地目录、外部查询入口、手动添加候选 |
@@ -103,6 +103,12 @@ API key 是搜索服务凭证，不是用户保险信息。搜索只发现公开
 The first text stage is implemented: deterministic task/cost reads, local structured
 Ollama routing, quoted office-reply proposals, explicit review, and saved-fact ranking
 updates. Real synthetic-model evidence is recorded in `verification/agent-local.json`.
-This updates the prior Ollama deferral only for this bounded text-agent path; it does
-not close microphone/transcription/playback, all preparation-language checks, or real
-search/provider/insurance acceptance. See README for setup and STATUS for scope.
+Call-script translation and live public search have separate acceptance evidence in
+STATUS.md. This text-agent stage does not include microphone/transcription/playback
+or verification of real provider prices, appointments or exact insurance participation.
+See README for setup and STATUS for each verification scope.
+
+Merge compatibility: call-script translation uses `OLLAMA_MODEL` (default
+`qwen3.5:2b`); structured office-reply extraction uses `OLLAMA_AGENT_MODEL` (default
+`qwen2.5:3b`). The local qwen3.5 runtime refused JSON-schema output during merge
+acceptance. Both routes remain local and their configuration is independent.

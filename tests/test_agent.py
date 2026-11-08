@@ -22,7 +22,7 @@ class AgentTests(unittest.TestCase):
         output = output or dict(action='propose_reply', replies=[
             dict(key='language', result='yes', evidence='有中文翻译'),
             dict(key='availability', result='no', evidence='目前不收新病人')])
-        with patch.object(self.app.model, 'structured', return_value=output):
+        with patch.object(self.app.agent.model, 'structured', return_value=output):
             return self.call('/api/agent/turn', body)
 
     def confirm(self, draft, **kwargs):
@@ -97,7 +97,7 @@ class AgentTests(unittest.TestCase):
     def test_reads_work_offline_without_model_and_do_not_mutate_case(self):
         self.call('/api/offline', {'offline': True})
         before = deepcopy(self.app.get_case(self.case['id']))
-        with patch.object(self.app.model, 'structured', side_effect=AssertionError('must not call model')):
+        with patch.object(self.app.agent.model, 'structured', side_effect=AssertionError('must not call model')):
             for tool in ('overview', 'costs'):
                 result = self.call('/api/agent/turn', {'id': self.case['id'], 'tool': tool})
                 self.assertEqual(result['state'], 'read')
@@ -105,17 +105,18 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(before, self.app.get_case(self.case['id']))
 
     def test_model_failure_is_honest_and_local_chat_protocol_is_scoped(self):
-        with patch.object(self.app.model, 'structured', side_effect=EgressError('offline local service')):
+        with patch.object(self.app.agent.model, 'structured', side_effect=EgressError('offline local service')):
             result = self.call('/api/agent/turn', {'id': self.case['id'], 'message': '下一步？'})
         self.assertEqual(result['state'], 'unavailable')
         self.assertFalse(self.app.agent.pending)
         with patch.object(self.app.egress, 'local', return_value={'message': {'content': json.dumps({'action': 'overview', 'replies': []})}}) as local:
-            self.app.model.structured('下一步？', SCHEMA, 'system')
+            self.app.agent.model.structured('下一步？', SCHEMA, 'system')
             args, kw = local.call_args
             self.assertTrue(args[1].endswith('/api/chat'))
             self.assertEqual(kw['json_body']['format'], SCHEMA)
             self.assertNotIn('NUSHP', json.dumps(kw['json_body']))
             self.assertFalse(kw['json_body']['stream'])
+            self.assertIs(kw['json_body']['think'], False)
 
     def test_language_answer_changes_fit_but_not_cost_priority_and_expires(self):
         case = self.app.get_case(self.case['id'])

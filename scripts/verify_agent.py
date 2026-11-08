@@ -28,16 +28,16 @@ def verify():
         case = post('/api/search', token=token, approved=True, live=False)
         provider = case['providers'][0]
         post('/api/offline', offline=True)
-        status = app.model.status()
+        status = app.agent.model.status()
         report = dict(checked_at_utc=datetime.now(timezone.utc).isoformat(), model=status,
                       scope='Real local Ollama with app offline switch on, synthetic text only, disposable vault; no microphone, browser, live provider or insurer verification.', checks=[])
         raw_outputs = []
-        structured = app.model.structured
+        structured = app.agent.model.structured
         def observe(*args, **kwargs):
             output = structured(*args, **kwargs)
             raw_outputs.append(output)
             return output
-        app.model.structured = observe
+        app.agent.model.structured = observe
         samples = [
             ('这家诊所有中文翻译，但目前不收新病人。', 'proposal', {'language': 'yes', 'availability': 'no'}),
             ('这家诊所说暂时不确定能不能安排中文翻译。', 'proposal', {'language': 'unknown'}),

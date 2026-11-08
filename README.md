@@ -11,9 +11,13 @@ Built for Hack1984 (Privacy-First track), first for international students in Bo
 ```sh
 git clone https://github.com/gaofang86/Hack-FK.git
 cd Hack-FK
-python3 -m pip install -r requirements.txt
-python3 run.py
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python run.py
 ```
+
+Use Python 3.11 or newer. On macOS, if `python3.11` is not installed, install it with `brew install python@3.11`. Activate `.venv` again with `source .venv/bin/activate` whenever you open a new terminal.
 
 Open http://127.0.0.1:8766. The first time, you build your health profile and choose a passphrase that encrypts it. There's no account and no server-side copy. The passphrase can't be recovered; "Start a new profile" on the unlock page erases the old one. Don't commit the vault or `.env`.
 
@@ -65,7 +69,7 @@ Age, language, coverage, conditions and medications are filled in from your prof
 
 ### 3. When and where
 
-Visit date, what matters most (fit, price, rating, distance), budget, then location. **Location is the only detail a public search ever uses.** You see the exact query and recipients before anything is sent, and you can choose the local directory only.
+Visit date, what matters most (fit, price, rating, distance), budget, then location. If you approve live search, the query includes care type and city/state/ZIP; the current app flow does not include your insurer or health details. You see the exact query and recipients before anything is sent, and you can choose the local directory only.
 
 ### 4. What to expect (while the search runs)
 
@@ -81,7 +85,7 @@ Computed with fixed rules on your device, with no model and no network. It shows
 
 **External provider lookup (Zocdoc).** `app/sources.py` turns your situation into a prefilled Zocdoc results link: kind of care (urgent care, primary care illness, annual physical, follow-up), your ZIP, and, only if you explicitly select a supported exact product in the plan form, that insurance filter. A typed plan name never selects a product. The currently supported filter is Blue Cross Blue Shield of Massachusetts · Blue Care Elect (PPO). This does not establish that it is your current NUSHP product or that any clinician participates. It opens in your own browser, so FirstVisit sends nothing; the card lists exactly what Zocdoc will see. The IDs were read from zocdoc.com result URLs on 2026-11-07. They're not a documented API and may change. Sources share one `describe()` shape, so a Zocdoc API source can replace the link once partner credentials arrive (requested 2026-11-07, not yet granted).
 
-Below that is the shortlist: personal cost, language, rating and distance, each labeled with its source. Unknown stays unknown, never $0. You can add a confirmed quote, prepare a call script (template, or a local Ollama draft), and track the appointment.
+Below that is the shortlist: personal cost, language, rating and distance, each labeled with its source. Unknown stays unknown, never $0. You can add a confirmed quote, prepare a call script (built-in template, or with your local model each English line followed by its translation), and track the appointment.
 
 ### 6. After the visit
 
@@ -100,16 +104,18 @@ Below that is the shortlist: personal cost, language, rating and distance, each 
 | Live search | Tavily and/or Exa; needs your own API key; results are leads to confirm |
 | Personal prices | Deterministic copay or deductible/coinsurance math on your entered benefits and confirmed quotes |
 | Reviews and distance | Unknown unless sourced; demo values are fictional |
-| Local model | Ollama on loopback only, for visit-prep drafts; clearly labeled template when unavailable; no cloud fallback |
+| Local model | Ollama on loopback only (verified with `qwen3.5:2b`). Preparation translates the fixed call script line by line without health history. The optional care-task agent reads submitted office replies and proposes reviewed records; costs and safety rules remain deterministic. Labeled template when unavailable; no cloud fallback |
 | Booking | You book on the provider's site, then record it; no automatic booking |
 
 ## Connect services
 
-Copy `.env.example` to `.env` and add `TAVILY_API_KEY` or `EXA_API_KEY`, then restart. For local drafts, install Ollama and run:
+Copy `.env.example` to `.env` and add `TAVILY_API_KEY` or `EXA_API_KEY`, then restart. For call scripts in your language, install [Ollama](https://ollama.com), then run:
 
 ```sh
-ollama pull qwen2.5:3b
+ollama pull qwen3.5:2b
 ```
+
+In a visit, choose **Prepare this visit → Use my local model**. If the model isn't running, the app says why and shows the English template instead.
 
 ## Privacy
 
@@ -118,7 +124,7 @@ ollama pull qwen2.5:3b
 - The local model only accepts loopback addresses and bypasses HTTP proxies.
 - The app loads no third-party scripts, fonts, analytics or images, and keeps no health data in browser storage.
 
-**Scope.** The ledger covers the app's own gateway, not the whole operating system. The static import audit checks that only `egress.py` opens connections; it isn't a full security audit or a semantic PHI detector. Network integrations were tested against local fakes.
+**Scope.** The ledger covers the app's own gateway, not the whole operating system. The static import audit checks that only `egress.py` opens connections; it isn't a full security audit or a semantic PHI detector. Automated tests use local fakes; live Tavily/Exa and local-model checks are recorded separately in STATUS.md and `verification/ollama.json`.
 
 ## Code map
 
@@ -157,7 +163,7 @@ Open http://127.0.0.1:8767. This creates a disposable fictional profile and a re
 
 Prepared materials: [demo script](docs/DEMO_SCRIPT.md), [submission draft](docs/DEVPOST_DRAFT.md), [user-test protocol](docs/USER_VALIDATION.md), [release checklist](docs/RELEASE_CHECKLIST.md). Interviews, recording, publication and submission are not claimed as completed.
 
-Real Tavily/Exa API acceptance remains deferred in PLAN.md section 9. The optional local agent has a separate reproducible acceptance check below. Template preparation, local directory and manual candidate workflows remain available.
+Live Tavily/Exa acceptance passed for a synthetic Brookline query; see STATUS.md for scope and limits. Live discovery requires your own API key. The local model (Ollama, `qwen3.5:2b`) passed its acceptance check; see `verification/ollama.json`. Both stay optional: template preparation, the local directory and manual candidates work without them.
 
 ## Tests
 
@@ -169,7 +175,7 @@ node --check static/navigation.js
 node --test tests/test_navigation_ui.cjs tests/test_personalized_ui.cjs
 ```
 
-The automated suite covers the local agent in addition to the workflows below. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
+The Python suite includes the local care agent as well as the following workflows. Tests cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, the local-model fallback and line-by-line translation, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
 
 
 Reproducible acceptance checks (use only synthetic data):
@@ -177,6 +183,7 @@ Reproducible acceptance checks (use only synthetic data):
 ```sh
 python3 scripts/verify_privacy.py --out verification/privacy-receiver.json
 python3 scripts/verify_install.py
+python3 scripts/verify_ollama.py --out verification/ollama.json   # needs Ollama running; run with Wi-Fi off to record no network route
 ```
 
 The first observes a separate test app process using a controlled loopback receiver. The second downloads requirements into a fresh temporary virtual environment and runs tests, the import audit, JS syntax and receiver checks. Reports are under `verification/`; neither validates real API keys, exact physician participation or production network isolation.
@@ -193,6 +200,12 @@ ollama serve
 # In a second terminal:
 ollama pull qwen2.5:3b
 ```
+
+The translator uses `OLLAMA_MODEL` (default `qwen3.5:2b`); the agent uses
+`OLLAMA_AGENT_MODEL` (default `qwen2.5:3b`). The latter requires JSON-schema support.
+During merge acceptance the installed `qwen3.5:2b` runtime returned
+`structured output is unavailable`, so these paths are configured independently;
+there is no silent model substitution or cloud fallback.
 
 Select the exact clinic and enter an office reply, such as
 “这家诊所有中文翻译，但目前不收新病人。” The local model proposes separate language

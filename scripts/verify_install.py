@@ -39,14 +39,16 @@ def main():
         audit=json.loads(run([python,'scripts/audit_egress.py'],source))
         if not audit['passed']: raise RuntimeError('Network import audit failed')
         run(['node','--check','static/app.js'],source)
+        run(['node','--check','static/navigation.js'],source)
+        run(['node','--test','tests/test_navigation_ui.cjs','tests/test_personalized_ui.cjs'],source)
         privacy=json.loads(run([python,'scripts/verify_privacy.py'],source))
         versions=run([python,'-m','pip','freeze'],source).splitlines()
         report={'passed':True,'checked_at_utc':datetime.now(timezone.utc).isoformat(),
                 'scope':'Fresh temporary source copy and virtual environment; no .env, patient vault, model or real API credentials copied.',
                 'python':sys.version.split()[0],'elapsed_seconds':round(time.monotonic()-started,1),
                 'tests':tests,'network_import_audit':audit['passed'],'javascript_syntax':True,
-                'privacy_receiver':privacy['passed'],'installed_dependencies':versions,
-                'not_verified':['real Tavily/Exa APIs','Ollama','target-user interviews','current NUSHP cost sharing','clinician network participation']}
+                'privacy_receiver':privacy['passed'],'navigation_ui_checks':True,'installed_dependencies':versions,
+                'outside_this_check':['real Tavily/Exa APIs (see STATUS.md)','Ollama (see verification/ollama.json)','target-user interviews','current NUSHP cost sharing','clinician network participation']}
     args.out.parent.mkdir(parents=True,exist_ok=True)
     args.out.write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))

@@ -69,11 +69,11 @@ Retain local profiles, relevant refill/follow-up reminders, visit records and pr
 Test whether users can complete their next step before testing repeat use and willingness to pay. Universities and student insurers are potential distribution and buyer hypotheses. Local processing, inspectable cost scenarios and persistent tasks are a combination to validate, not proof that competitors or general assistants cannot provide it.
 
 
-## 9. Pending integrations and acceptance
+## 9. Integration goals and acceptance
 
-Both integrations remain future work. Complete the independent product workflow first.
+Current implementation and validation evidence belongs in [STATUS.md](STATUS.md). These criteria define the target evidence for the integrations.
 
-| Pending item | Goal | Completion criteria | Available fallback |
+| Integration | Goal | Acceptance criteria | Available fallback |
 |---|---|---|---|
 | Ollama local model | Produce reviewable preparation drafts, including Chinese, on-device | Install runtime/model; verify loopback calls, Chinese output, offline use and failure fallback; no changes to safety rules or cost math, no cloud fallback | Clearly labeled built-in templates |
 | Tavily / Exa search API | Discover public provider leads inside the app | Configure at least one API key in local `.env`, never version control; verify real NEU / 02445 results, disclosure preview, ledger, failures and offline handling | Sourced local directory, external lookup links and manual candidate entry |
@@ -85,6 +85,12 @@ An API key authenticates a search service; it is not member insurance informatio
 The first text stage is implemented: deterministic task/cost reads, local structured
 Ollama routing, quoted office-reply proposals, explicit review, and saved-fact ranking
 updates. Real synthetic-model evidence is recorded in `verification/agent-local.json`.
-This updates the prior Ollama deferral only for this bounded text-agent path; it does
-not close microphone/transcription/playback, all preparation-language checks, or real
-search/provider/insurance acceptance. See README for setup and STATUS for scope.
+Call-script translation and live public search have separate acceptance evidence in
+STATUS.md. This text-agent stage does not include microphone/transcription/playback
+or verification of real provider prices, appointments or exact insurance participation.
+See README for setup and STATUS for each verification scope.
+
+Merge compatibility: call-script translation uses `OLLAMA_MODEL` (default
+`qwen3.5:2b`); structured office-reply extraction uses `OLLAMA_AGENT_MODEL` (default
+`qwen2.5:3b`). The local qwen3.5 runtime refused JSON-schema output during merge
+acceptance. Both routes remain local and their configuration is independent.
