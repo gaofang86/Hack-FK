@@ -69,7 +69,10 @@ class App:
 
     def shown(self, case):
         rows = ranked(case)
-        return dict(case, results=rows, next_action=next_action(case, rows), scenario=guidance(case["input"]), sources=describe_all(case["input"]), plan_reference=student_reference(case["input"]))
+        person = case["input"]
+        coverage = ("insured" if person.get("insurance") == "yes" else "choosing" if person.get("wants_insurance")
+                    else "uninsured" if person.get("insurance") == "no" else journeys.coverage_situation(case, self.store.data.get("profile", {})))
+        return dict(case, coverage_situation=coverage, results=rows, next_action=next_action(case, rows), scenario=guidance(case["input"]), sources=describe_all(case["input"]), plan_reference=student_reference(case["input"]))
 
     def get_journey(self, ident):
         case = self.store.require()['cases'].get(ident)
@@ -502,7 +505,7 @@ def make_handler(app):
                     return self.send(500, {"error": "The local operation failed. Your saved information is still in the vault."})
             if self.command != "GET":
                 return self.send(405, {"error": "Method not allowed"})
-            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/navigation.js": "navigation.js", "/dictation.js": "dictation.js", "/i18n.js": "i18n.js", "/completion.js": "completion.js", "/styles.css": "styles.css"}
+            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/navigation.js": "navigation.js", "/dictation.js": "dictation.js", "/i18n.js": "i18n.js", "/completion.js": "completion.js", "/stages.js": "stages.js", "/styles.css": "styles.css"}
             file = assets.get(parsed.path)
             if not file:
                 return self.send(404, {"error": "Not found"})
