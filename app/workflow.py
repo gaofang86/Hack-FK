@@ -82,6 +82,9 @@ def next_action(case, rows):
         return 'Visit recorded; review follow-ups on your health profile.'
     if case.get('status') == 'booked':
         return 'Review appointment details and bring your preparation script.'
+    # A clinic the person chose comes first; the ranking only orders the rest.
+    chosen = (case.get('contact') or {}).get('provider_id')
+    rows = sorted(rows, key=lambda r: r['provider']['id'] != chosen) if chosen else rows
     for row in rows:
         if row.get('unavailable'):
             continue

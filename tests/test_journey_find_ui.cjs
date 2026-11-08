@@ -16,7 +16,8 @@ test('concern tasks still start at the symptom and safety check',()=>{
 test('insurance status from the user goal fills an unanswered wizard question; a saved profile answer wins',()=>{
  assert.equal(findCare({id:'j',kind:'insurance',goal:'I have student insurance',coverage_situation:'insured'}).input.insurance,'yes');
  assert.equal(findCare({id:'j',kind:'first_visit',goal:'I do not have insurance',coverage_situation:'uninsured'}).input.insurance,'no');
- assert.equal(findCare({id:'j',kind:'insurance',goal:'compare plans',coverage_situation:'choosing'}).input.insurance,'');
+ const choosing=findCare({id:'j',kind:'insurance',goal:'compare plans',coverage_situation:'choosing'}).input;
+ assert.equal(choosing.insurance,'no');assert.equal(choosing.wants_insurance,true); // answered once; not asked again
  assert.equal(findCare({id:'j',kind:'insurance',goal:'I have insurance',coverage_situation:'insured'},{insurance:'no'}).input.insurance,'no');
 });
 test('English mode has no Chinese-only result heading, personal note or default goal',()=>{

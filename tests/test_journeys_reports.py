@@ -245,3 +245,32 @@ class ExplainComparisonTests(unittest.TestCase):
         tied = [dict(r, supported=False, cost={"amount": None}, miles=None) for r in self.rows]
         en, zh = explain.why_first(tied, "balanced")
         self.assertIn('same evidence', en); self.assertIn('按名称排列', zh)
+
+
+class ConflictAuditTests(ScenarioConsistencyTests):
+    """Every view of one task tells the same coverage story and follows the user's own choices."""
+    def test_shortlist_coverage_is_the_same_on_results_journey_and_explanation(self):
+        from app import explain
+        # Goal wording says nothing about insurance; the Find care answer was "no insurance".
+        j, case, _ = self.script(kind='follow_up', goal='SYNTHETIC goal', insurance='no', wants_insurance=False, plan=None)
+        self.assertEqual(case['coverage_situation'], 'uninsured')
+        self.assertEqual(self.get('/api/journey', id=j['id'])['coverage_situation'], 'uninsured')
+        stored = self.app.store.data['cases'][j['id']]
+        self.assertEqual(explain.coverage_facts(stored, {})['situation'], 'uninsured')
+
+    def test_reviewed_benefits_are_not_claimed_for_an_uninsured_person(self):
+        from app import explain
+        facts = explain.coverage_facts({'goal': 'I do not have insurance', 'input': {'insurance': 'no'}},
+                                       {'plan_benefits': {'name': 'SYNTHETIC'}, 'plan': {'name': 'SYNTHETIC PPO'}})
+        self.assertEqual(facts['situation'], 'uninsured')
+        self.assertFalse(facts['benefits_added']); self.assertEqual(facts['plan_name'], '')
+        self.assertIn('unknown (not $0)', explain.template(facts, 'en'))
+        self.assertNotIn('plan documents', explain.model_facts(facts))
+
+    def test_next_action_follows_the_chosen_clinic(self):
+        _, case, _ = self.script(kind='concern', goal='SYNTHETIC goal')
+        self.assertGreater(len(case['results']), 1)
+        last = case['results'][-1]['provider']
+        self.assertNotIn(last['name'], case['next_action'])
+        chosen = self.post('/api/case/contact', id=case['id'], status='comparing', provider_id=last['id'])
+        self.assertIn(last['name'], chosen['next_action'])

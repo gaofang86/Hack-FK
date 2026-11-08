@@ -22,16 +22,21 @@ NEXT_ZH = {'insured': '打保险卡背面的会员服务电话，问这位医生
 
 def coverage_facts(case, profile):
     profile = profile or {}
-    plan = (profile.get('plan') or {}).get('name') or ''
+    situation = coverage_situation(case, profile)
+    # Reviewed benefits only describe an insured person's own plan; never for uninsured or choosing.
+    benefits = situation == 'insured' and bool(profile.get('plan_benefits'))
+    # The plan this task was priced with, when it has a shortlist; otherwise the saved profile plan.
+    source = case.get('input') if case.get('input') else profile
+    plan = ((source.get('plan') or {}).get('name') or '') if situation == 'insured' else ''
     return {
-        'situation': coverage_situation(case, profile),
+        'situation': situation,
         'plan_name': plan,
-        'benefits_added': bool(profile.get('plan_benefits')),
-        'visit_cost': 'known from reviewed benefits' if profile.get('plan_benefits') else 'unknown (not $0)',
+        'benefits_added': benefits,
+        'visit_cost': 'known from reviewed benefits' if benefits else 'unknown (not $0)',
         'next_step': {'insured': 'call the member services number on the insurance card and ask whether the clinician is in network and what the visit copay is',
                       'uninsured': 'ask clinics for the self-pay price of a new-patient visit and about financial assistance',
                       'choosing': 'compare plans by yearly premium plus expected visit costs, using each plan SBC',
-                      'unknown': 'answer whether you have insurance first'}[coverage_situation(case, profile)],
+                      'unknown': 'answer whether you have insurance first'}[situation],
     }
 
 
@@ -53,9 +58,11 @@ def model_facts(facts):
     lines = [sit]
     if facts['plan_name']:
         lines.append(f"Plan name: {facts['plan_name']}.")
-    if facts['situation'] in ('insured', 'uninsured'):
+    if facts['situation'] == 'insured':
         lines.append('The visit cost is known from benefits the person reviewed.' if facts['benefits_added'] else
                      'The visit cost is not known yet, because the app has not read the plan documents. This says nothing about what the plan covers.')
+    elif facts['situation'] == 'uninsured':
+        lines.append('The visit cost is not known yet, until a clinic gives its self-pay price.')
     lines.append('Next step: ' + facts['next_step'] + '.')
     return '\n'.join(lines)
 

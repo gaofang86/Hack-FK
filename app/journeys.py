@@ -33,8 +33,14 @@ _INSURED = re.compile(r"have .*insurance|my (insurance|plan)|student (health )?(
 
 
 def coverage_situation(case, profile=None):
-    """Deterministic: the saved profile wins; otherwise read the user's own goal wording."""
+    """Deterministic: a task's own Find care answer wins (it priced that shortlist), then the
+    saved profile, then the user's own goal wording."""
     profile = profile or {}
+    person = case.get('input') or {}
+    if person.get('insurance') == 'yes':
+        return 'insured'
+    if person.get('insurance') == 'no':
+        return 'choosing' if person.get('wants_insurance') else 'uninsured'
     if profile.get('insurance') == 'yes':
         return 'insured'
     if profile.get('insurance') == 'no':

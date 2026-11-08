@@ -69,9 +69,8 @@ class App:
 
     def shown(self, case):
         rows = ranked(case)
-        person = case["input"]
-        coverage = ("insured" if person.get("insurance") == "yes" else "choosing" if person.get("wants_insurance")
-                    else "uninsured" if person.get("insurance") == "no" else journeys.coverage_situation(case, self.store.data.get("profile", {})))
+        # One rule for every view of this task (results, journey page, coverage explanation).
+        coverage = journeys.coverage_situation(case, self.store.data.get("profile", {}))
         return dict(case, coverage_situation=coverage, results=rows, next_action=next_action(case, rows), scenario=guidance(case["input"]), sources=describe_all(case["input"]), plan_reference=student_reference(case["input"]))
 
     def get_journey(self, ident):
