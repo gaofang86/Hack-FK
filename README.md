@@ -69,6 +69,8 @@ Computed with fixed rules on your device, with no model and no network. It shows
 | **B. No insurance** | Check you're not already enrolled by your school; cheapest options first; [community health centers](https://findahealthcenter.hrsa.gov/), [free clinics](https://nafcclinics.org/find-clinic/), [hospital financial assistance](https://www.irs.gov/charities-non-profits/financial-assistance-policies-faps), [Good Faith Estimates](https://www.cms.gov/newsroom/fact-sheets/no-surprises-understand-your-rights-against-surprise-medical-bills); scripts for asking about price and help |
 | **C. Choosing a plan** | Everything in B, plus **Compare plans**: pick the care you expect this year (pre-filled from your profile), enter up to three plans, and get a yearly total = premiums + care, capped at the out-of-pocket maximum. A plan with unknown or uncovered care is never ranked. |
 
+**Real in-network providers (Zocdoc).** `app/sources.py` turns your situation into a prefilled Zocdoc results link: kind of care (urgent care, primary care illness, annual physical, follow-up), your ZIP, and, if your saved plan matches one we have IDs for, your exact plan. Today that's Blue Cross Blue Shield of Massachusetts · Blue Care Elect (PPO), Northeastern's student plan. It opens in your own browser, so FirstVisit sends nothing; the card lists exactly what Zocdoc will see. The IDs were read from zocdoc.com result URLs on 2026-11-07. They're not a documented API and may change. Sources share one `describe()` shape, so a Zocdoc API source can replace the link once partner credentials arrive (requested 2026-11-07, not yet granted).
+
 Below that is the shortlist: personal cost, language, rating and distance, each labeled with its source. Unknown stays unknown, never $0. You can add a confirmed quote, prepare a call script (template, or a local Ollama draft), and track the appointment.
 
 ### 6. After the visit
@@ -118,6 +120,7 @@ ollama pull qwen2.5:3b
 | `app/benefits.py` | Visit cost arithmetic |
 | `app/expect.py` | The "what to expect" page |
 | `app/scenarios.py` | A/B/C guidance and plan comparison |
+| `app/sources.py` | Provider sources (prefilled Zocdoc link; API later) |
 | `app/sbc.py` | Reads a plan's SBC (PDF via `pypdf`, or text) into per-service costs |
 | `app/egress.py` | The only network gateway, with DLP and ledger |
 | `app/store.py` | Encrypted vault |
@@ -134,4 +137,4 @@ python3 scripts/audit_egress.py
 node --check static/app.js
 ```
 
-There are 69 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
+There are 74 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.

@@ -18,6 +18,7 @@ from .expect import expectations
 from .health import clean_profile, record_visit, view as health_view
 from .scenarios import NEEDS, compare_plans, guidance, suggested_needs
 from .sbc import plan_for, read_upload, to_plan
+from .sources import describe_all
 from .benefits import clean_plan as _clean_plan
 from .navigation import SERVICES, clean_input, from_search, ranked, safety_check, text, update_quote
 from .triage import checks_view, symptom_terms
@@ -55,7 +56,7 @@ class App:
         return case
 
     def shown(self, case):
-        return dict(case, results=ranked(case), scenario=guidance(case["input"]))
+        return dict(case, results=ranked(case), scenario=guidance(case["input"]), sources=describe_all(case["input"]))
 
     def dispatch(self, method, path, body, query):
         with self.mutex:

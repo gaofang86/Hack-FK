@@ -85,6 +85,7 @@ def clean_input(raw):
                   history=text(raw.get("history"), 3000), medications=text(raw.get("medications"), 1000),
                   plan=clean_plan(raw.get("plan")), months=int(months), demo=raw.get("demo") is True,
                   routine_confirmed=True, adult=True, age=None if age is None else int(age),
+                  need=raw.get("need") if raw.get("need") in ("checkup", "refill", "follow_up") else "",
                   safety=None if safety is None else {k: safety[k] for k in ("level", "headline", "rules", "checks")},
                   lat=None, lon=None)
     if raw.get("lat") is not None and raw.get("lon") is not None:
