@@ -45,6 +45,7 @@ class App:
         self.mutex = threading.RLock()
         self.previews = {}
         self.report_previews = {}
+        self.report_explanations = {}  # in memory only; cleared on lock and on any report change
 
     def state(self):
         summaries = []
@@ -112,6 +113,7 @@ class App:
                 self.store.lock_vault()
                 self.agent.clear()
                 self.report_previews.clear()
+                self.report_explanations.clear()
             if path == "/api/state" and method == "GET":
                 return self.state()
             if path == "/api/explain/comparison" and method == "POST":
@@ -120,6 +122,17 @@ class App:
             if path == "/api/explain/coverage" and method == "POST":
                 case = self.get_journey(body.get("journey_id", ""))
                 return explain.explain_coverage(self.model, case, self.store.data.get("profile", {}), "zh" if body.get("lang") == "zh" else "en")
+            if path == "/api/reports/explain" and method == "POST":
+                ids = body.get("report_ids")
+                saved = self.store.data.get("reports", {})
+                if not isinstance(ids, list) or not ids or len(ids) > 20 or any(i not in saved for i in ids):
+                    raise ValueError("Report not found")
+                lang = "zh" if body.get("lang") == "zh" else "en"
+                key = (tuple(sorted(ids)), lang)
+                if key not in self.report_explanations:
+                    rows = [r for i in ids for r in saved[i]["rows"]]
+                    self.report_explanations[key] = explain.explain_report(self.model, rows, lang)
+                return self.report_explanations[key]
             if path == "/api/directory" and method == "GET":
                 # Public sourced directory, matched locally; works locked and offline, nothing leaves the device.
                 return dict(results=directory_search(query.get("q", [""])[0][:120]),
@@ -144,6 +157,7 @@ class App:
                 self.previews.clear()
                 self.agent.clear()
                 self.report_previews.clear()
+                self.report_explanations.clear()
                 self.store.wipe()
                 return self.state()
             self.store.require()
@@ -152,6 +166,7 @@ class App:
                 self.previews.clear()
                 self.agent.clear()
                 self.report_previews.clear()
+                self.report_explanations.clear()
                 self.store.lock_vault()
                 return self.state()
             if path == '/api/journeys' and method == 'POST':
@@ -217,6 +232,7 @@ class App:
                         case.pop('preparation', None)
                     case['report_ids'] = [r for r in case.get('report_ids', []) if r != rid]
                 self.report_previews.clear()
+                self.report_explanations.clear()
                 self.previews.clear()
                 self.agent.clear()
                 self.store.save()
@@ -328,6 +344,7 @@ class App:
             if path == "/api/profile/forget" and method == "POST":
                 self.agent.clear()
                 self.report_previews.clear()
+                self.report_explanations.clear()
                 profile, field, value = self.store.data["profile"], body.get("field"), text(body.get("value"), 200)
                 if field in ("conditions", "allergies", "medications"):
                     profile[field] = [v for v in profile.get(field, []) if v != value]
