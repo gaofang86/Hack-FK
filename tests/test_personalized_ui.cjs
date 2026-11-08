@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname,'../static/app.js'),'utf8');
 const helpers = source.split('\n').filter(line=>/^(const esc =|const dollars =|const serviceName=)/.test(line)).join('\n');
 const start = source.indexOf('const PRIORITY_LABELS=');
 const end = source.indexOf('function renderResults()', start);
-const context = {};
+const context = {I18n:{locale:'en'},directionsLink:()=>'',bookingLink:()=>''};
 vm.runInNewContext(helpers+'\n'+source.slice(start,end)+'\nglobalThis.ui={personalizedContext,nextStepPanel};',context);
 const {personalizedContext,nextStepPanel}=context.ui;
 
@@ -53,4 +53,13 @@ test('no actionable clinic leads to another candidate; attended care leads to fo
   c.status='attended';
   assert.ok(nextStepPanel(c).includes('data-action="home-page"'));
   assert.ok(!nextStepPanel(c).includes('data-answer='));
+});
+
+test('a chosen clinic shows the contact checklist, ticked from saved data',()=>{
+  const c=careCase();c.contact={provider_id:'active'};c.preparation={provider_id:'active'};
+  c.results[1].provider.answers=[{key:'language'}];
+  const html=nextStepPanel(c);
+  assert.ok(html.includes('contact-checklist'));assert.ok(html.includes('data-answer="active"'));assert.ok(html.includes('data-action="mark-booked"'));
+  assert.equal((html.match(/<li class="done">/g)||[]).length,2); // script prepared + reply recorded
+  assert.ok(html.includes('not a booking'));
 });

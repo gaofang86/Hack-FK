@@ -20,3 +20,9 @@ test('progress follows saved task status in each scenario',()=>{
  assert.equal(states(taskStages({coverage:'choosing'})),'done done current todo todo');
  assert.match(nextStep(taskStages({coverage:'choosing'}),'choosing'),/premium/);
 });
+
+test('choosing a clinic finishes stage 3 without claiming contact',()=>{
+ assert.equal(states(taskStages({coverage:'insured',hasShortlist:true,chosen:true,status:'comparing'})),'done done done current todo');
+ assert.match(nextStep(taskStages({coverage:'insured',hasShortlist:true,chosen:true}),'insured'),/copay/);
+ assert.equal(states(taskStages({coverage:'insured',chosen:true})),'done done current todo todo'); // no shortlist yet
+});

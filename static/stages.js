@@ -17,13 +17,13 @@ function stagePath(coverage){
  return coverage==='choosing'?['need','coverage','plans','enroll','care']:['need','coverage','clinic','contact','after'];
 }
 
-// task: {coverage, hasShortlist, status, contactedAny, comparedPlans}
+// task: {coverage, hasShortlist, chosen, status, contactedAny, comparedPlans}
 function taskStages(task){
  const t=task||{}, coverage=t.coverage||'unknown', path=stagePath(coverage), status=t.status||'planning';
  const done={
   need:true,
   coverage:coverage!=='unknown',
-  clinic:!!t.hasShortlist&&['contacted','booked','attended'].includes(status)||!!t.contactedAny,
+  clinic:!!t.hasShortlist&&(!!t.chosen||['contacted','booked','attended'].includes(status)||!!t.contactedAny),
   contact:['booked','attended'].includes(status),
   after:status==='attended',
   plans:!!t.comparedPlans,
