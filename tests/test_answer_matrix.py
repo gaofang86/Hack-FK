@@ -107,6 +107,14 @@ class RowCTests(unittest.TestCase):
         for word in ('abnormal', 'you have ', 'normal range'):
             self.assertNotIn(word, text)
 
+    def test_a_reviewed_report_alone_opens_the_results_card_with_a_factual_summary(self):
+        v = self.c(PROFILES['insured'], None, REPORT)
+        self.assertEqual(v['stage'], 2); self.assertNotIn('followup_form', v)
+        summary = v['why'][0]['text']
+        self.assertEqual(summary, '2 results reviewed: 1 not flagged by the lab, 1 flagged: SYNTHETIC Marker 12 mg/dL (1-10, High).')
+        self.assertNotIn('normal', summary.lower())
+        self.assertIn('marks SYNTHETIC Marker as High', v['questions'][0])
+
     def test_sbc_lines_used_for_refill_and_visit(self):
         sbc = dict(SBC, services=dict(SBC['services'], generic={'kind': 'copay', 'amount': 10}))
         p = {'insurance': 'yes', 'plan': {'name': 'SYNTHETIC PPO'}, 'plan_benefits': sbc}

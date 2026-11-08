@@ -194,3 +194,4 @@ html[data-ui-locale="en"] .home-composer h1{font-size:44px;line-height:1.15;max-
 .use-row summary{display:flex;justify-content:space-between;cursor:pointer;padding:.35rem 0}
 .use-row ul{margin:.25rem 0 .5rem 1.2rem;font-size:11px;color:var(--muted)}
 .flag-quote,.flag-ask,.report-line,.use-row summary{font-size:12px}
+.report-table tr.flagged td{background:#fff6e5;font-weight:600}

@@ -487,13 +487,15 @@ def follow(m, profile, f, reports):
              for rep in reports for r in rep['rows']]
     report_ids = [rep['id'] for rep in reports]
     edit = dict(id='followup-edit', label=T('修改我手里的事', 'Edit what I have'), primary=False)
+    if not f and facts:
+        f = dict(type='results', what='', who='', due='')  # a reviewed report already says what you have
     if not f:
         return dict(stages=FOLLOW_STAGES, stage=0,
                     headline=T('医生让你做什么，或者你拿到了什么结果？', 'What did your clinician ask you to do, or what results do you have?'),
                     why=[dict(text=T('先写下原话和期限；这里不解释结果，也不安排检查。', 'Start with their words and the deadline; this page never interprets results or orders tests.'), source=None)],
                     cost=[T('写下之后再算', 'Once you tell us')],
                     do_now=dict(text=T('选一类，写一句话。有化验单可以加 PDF。', 'Pick one and write a sentence. Add the lab PDF if you have one.'), script='', gloss=None),
-                    unknown=[], then=T('之后：该问谁、问什么', 'Next: who to ask and what'),
+                    unknown=[], then=T('该问谁、问什么', 'Who to ask and what'),
                     clinics=[], calls=[], followup_form=True, report_upload=True, facts=facts, report_ids=report_ids, actions=[])
     what, who, due = f['what'], f['who'], f['due']
     who_en, who_zh = who or 'your clinician’s office', who or '医生的诊所'
@@ -533,6 +535,12 @@ def follow(m, profile, f, reports):
             [T('就诊费用：未知，不按 0 计算；检查和化验可能另外收费', 'Visit cost: unknown, not $0; tests and labs may be billed separately')]
     headline = (lead[0] + tail[0], lead[1] + tail[1])
     why = [dict(text=T(f'你写的：{what}', f'You wrote: {what}'), source=None)] if what else []
+    if facts:
+        quoted = '; '.join(f'{x["name"]} {x["result"]} ({x["reference"]}, {x["flag"]})' for x in flagged[:5])
+        why.insert(0, dict(text=T(
+            f'化验单共 {len(facts)} 项：{len(facts) - len(flagged)} 项化验单没有标记，{len(flagged)} 项有标记' + (f'：{quoted}' if flagged else '') + '。',
+            f'{len(facts)} results reviewed: {len(facts) - len(flagged)} not flagged by the lab, {len(flagged)} flagged' + (f': {quoted}' if flagged else '') + '.'),
+            source=None))
     if facts:
         why.append(dict(text=T('化验单的标记是原文，不是诊断；只有医生能结合你的情况解释。', 'Lab flags are quoted from the report, not a diagnosis; only a clinician can explain them for you.'), source=None))
     unknown = []
