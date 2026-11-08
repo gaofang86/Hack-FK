@@ -107,6 +107,38 @@ class ProfileApiTests(unittest.TestCase):
         self.app.preview_mode = False
         self.assertFalse(self.call("/api/state")["unlocked"])
 
+    def test_visit_grows_the_profile(self):
+        soon = (date.today() + timedelta(days=4)).isoformat()
+        self.call("/api/profile", {"birth_year": 1998, "medications": [{"name": "Inhaler"}],
+                                   "follow_ups": [{"what": "Asthma check"}]})
+        token = self.call("/api/preview", health_first())["token"]
+        case = self.call("/api/search", {"token": token, "approved": True, "live": False})
+        view = self.call("/api/visit", {"case_id": case["id"], "reason": "Asthma check", "place": "Campus clinic",
+                                        "notes": "Use the new eye drops for a week",
+                                        "medications": [{"name": "Eye drops", "refill_by": soon}, {"name": "Inhaler"}],
+                                        "follow_ups": [{"what": "Eye recheck", "due": soon}],
+                                        "conditions": "Seasonal allergies", "completed_follow_ups": ["Asthma check"]})
+        p = view["profile"]
+        self.assertEqual(p["medications"], ["Inhaler", "Eye drops"])          # no duplicates
+        self.assertEqual([f["what"] for f in p["follow_ups"]], ["Eye recheck"])  # finished one removed
+        self.assertIn("Seasonal allergies", p["conditions"])
+        self.assertEqual(p["visits"][0]["reason"], "Asthma check")
+        todo_ids = {t["id"] for t in view["todos"]}
+        self.assertTrue({"refill:Eye drops", "follow:Eye recheck"} <= todo_ids)
+        cases = {c["id"]: c for c in self.call("/api/state")["cases"]}
+        self.assertEqual(cases[case["id"]]["status"], "attended")
+        fields = {(x.field, x.value) for x in protected_values(self.app.store.data)}
+        self.assertIn(("visits", "Asthma check"), fields)
+
+    def test_visit_validation_and_forget(self):
+        with self.assertRaises(ValueError):
+            self.call("/api/visit", {"reason": ""})
+        with self.assertRaises(ValueError):
+            self.call("/api/visit", {"reason": "Checkup", "date": (date.today() + timedelta(days=3)).isoformat()})
+        view = self.call("/api/visit", {"reason": "Checkup"})
+        vid = view["visit"]["id"]
+        self.assertEqual(self.call("/api/profile/forget", {"field": "visit", "value": vid})["profile"]["visits"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

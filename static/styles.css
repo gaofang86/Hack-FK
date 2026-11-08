@@ -49,3 +49,7 @@
 .known-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:12px}.known-row:first-child{border-top:0}.known{margin-bottom:12px}
 @media(max-width:760px){.home{padding:0 16px}.home-title{font-size:30px}.need-card .feel-row,.home-grid,.facts,.row-2{grid-template-columns:1fr}.home-grid .form-card:nth-child(2){grid-row:auto}}
 .new-here{margin-top:28px;background:transparent}.new-here .secondary{margin-bottom:16px}.form-card code{background:#f0f4ec;padding:2px 6px;border-radius:4px;font-size:11px}
+.visit-row{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--line)}.visit-row:first-of-type{border-top:0;padding-top:0}.visit-date{font-size:10px;color:var(--muted);min-width:74px;padding-top:2px}.visit-row strong{font-size:12px}.visit-row p{font-size:11px;color:var(--muted);margin:2px 0 0;line-height:1.7}
+.record-visit{margin-left:auto}
+.home-grid{display:block;columns:2;column-gap:16px}.home-grid .form-card{break-inside:avoid;display:inline-block;width:100%;grid-row:auto}
+@media(max-width:760px){.home-grid{columns:1}}

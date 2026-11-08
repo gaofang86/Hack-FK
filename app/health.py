@@ -91,6 +91,39 @@ def clean_profile(raw, today=None):
             "plan": clean_plan(raw.get("plan"))}
 
 
+def record_visit(profile, raw, today=None):
+    """Add one visit to the timeline and fold what changed into the profile."""
+    today = today or date.today()
+    when = _date(raw.get("date"), "visit date") or today.isoformat()
+    if when > today.isoformat():
+        raise ValueError("Record a visit that has already happened")
+    reason = _text(raw.get("reason"), 200)
+    if not reason:
+        raise ValueError("Say what the visit was for")
+    update = clean_profile({"medications": raw.get("medications"), "follow_ups": raw.get("follow_ups"),
+                            "conditions": raw.get("conditions")}, today)
+    meds = profile.setdefault("medications", [])
+    for name in update["medications"]:
+        if name not in meds:
+            meds.append(name)
+    profile.setdefault("refills", {}).update(update["refills"])
+    finished = set(_strings(raw.get("completed_follow_ups")))
+    follow = [f for f in profile.get("follow_ups", []) if f["what"] not in finished]
+    known = {f["what"] for f in follow}
+    follow += [f for f in update["follow_ups"] if f["what"] not in known]
+    profile["follow_ups"] = follow
+    conds = profile.setdefault("conditions", [])
+    conds += [c for c in update["conditions"] if c not in conds]
+    visit = {"id": raw.get("id") or f"v{len(profile.get('visits', [])) + 1}-{when}", "date": when, "reason": reason,
+             "place": _text(raw.get("place"), 160), "notes": _text(raw.get("notes"), 2000),
+             "added": {"medications": update["medications"], "follow_ups": [f["what"] for f in update["follow_ups"]],
+                       "conditions": update["conditions"], "completed": sorted(finished)},
+             "case_id": _text(raw.get("case_id"), 40)}
+    profile.setdefault("visits", []).append(visit)
+    profile["visits"].sort(key=lambda v: v["date"], reverse=True)
+    return visit
+
+
 def age(profile, today=None):
     year = profile.get("birth_year")
     return None if not year else (today or date.today()).year - year

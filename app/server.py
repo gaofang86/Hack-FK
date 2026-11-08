@@ -15,7 +15,7 @@ from .config import Config, ROOT
 from .egress import Egress, EgressBlocked, EgressError
 from .llm import LocalModel
 from .expect import expectations
-from .health import clean_profile, view as health_view
+from .health import clean_profile, record_visit, view as health_view
 from .navigation import SERVICES, clean_input, from_search, ranked, safety_check, text, update_quote
 from .triage import checks_view, symptom_terms
 from .places import Places, plan_queries
@@ -94,6 +94,15 @@ class App:
                 profile.update(clean_profile(body))
                 self.store.save()
                 return health_view(profile)
+            if path == "/api/visit" and method == "POST":
+                profile = self.store.data["profile"]
+                body = dict(body, id=secrets.token_hex(6))
+                visit = record_visit(profile, body)
+                case = self.store.data["cases"].get(visit["case_id"]) if visit["case_id"] else None
+                if case:
+                    case["status"] = "attended"
+                self.store.save()
+                return dict(health_view(profile), visit=visit)
             if path == "/api/profile/todo" and method == "POST":
                 done = self.store.data["profile"].setdefault("done", {})
                 ident = text(body.get("id"), 200)
@@ -113,8 +122,11 @@ class App:
                     profile["follow_ups"] = [f for f in profile.get("follow_ups", []) if f["what"] != value]
                 elif field in ("birth_year", "sex", "plan"):
                     profile[field] = None if field != "sex" else ""
+                elif field == "visit":
+                    profile["visits"] = [v for v in profile.get("visits", []) if v["id"] != value]
                 elif field == "visits":
                     self.store.data["cases"] = {}
+                    profile["visits"] = []
                 elif field == "everything":
                     keep = {k: profile[k] for k in ("city", "state", "zip") if k in profile}
                     profile.clear(); profile.update(keep)
