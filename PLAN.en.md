@@ -108,3 +108,44 @@ input-processing boundary: audio already contains spoken content, may leave thro
 the browser's service, and provider retention/use/deletion is not controlled by the
 app. On-device mode never silently falls back. See `docs/VOICE_PRIVACY.md` and STATUS
 for actual implementation, evidence and unresolved real-browser acceptance.
+
+## 10. Product structure (updated 2026-11-08)
+
+This section records today's product decisions in business terms. Implementation evidence belongs in STATUS.md.
+
+### Two questions, asked in order
+
+Every care task answers two separate questions:
+
+1. **What do you want to get done?** Four starting points: **Stay healthy** (a regular doctor, checkups, preventive care, first time in US healthcare), **Get care** (a new concern, where to go, how booking works), **Manage my care** (a follow-up or test a clinician suggested, refills, reports and visit records, unfinished tasks) and **Insurance & costs** (using a plan, care without insurance, comparing ways to pay, asking for prices; bills come later). A person can also just describe the situation; the product suggests the matching starting point, and anything that sounds like a symptom goes to the safety check first.
+2. **How will you pay?** The three scenarios in §3 (insured, uninsured, choosing a plan). This is asked **once, before** preparing or finding care, because it changes which costs and questions apply.
+
+### One path per task
+
+Each task follows one visible line, and the person can always see where they are and what comes next:
+
+- **Insured / uninsured:** your need → coverage & costs → choose a clinic → contact & confirm → after the visit.
+- **Choosing a plan:** your need → coverage & costs → compare plans → enroll through official channels → then find care. This path does not send people through clinic search (§3).
+- If coverage is unknown, later steps wait until it is answered. A question already answered is not asked again.
+
+A short "what we know" summary stays beside the path: what is confirmed, what is unknown (never shown as $0), and the next step in that scenario's own words.
+
+### Two ways to find care, and the handoff
+
+People arrive either with a need or with a name (a doctor or clinic a friend, school or insurer mentioned). Both are supported: **by need** through the guided flow, or **by name** in a sourced local directory. Each clinic with a specific street address offers directions; an online booking link appears only when the official page provides one. Opening a booking link is not a booking; the person books externally and records the outcome.
+
+### The role of AI: rules decide, the local model explains
+
+Facts, safety triage, costs, coverage status and ranking are decided by fixed rules. A local, on-device model may turn those settled facts into a plain-language explanation for this person (for example what "cost unknown" means for them, or what to ask a clinic). It may not add facts, numbers, coverage or network claims, guesses about why something ranks first, or diagnoses. If its explanation adds anything that is not supported, the product shows the rules-based wording instead. The product remains fully usable without a model.
+
+### Evidence used as reference
+
+Published plan figures from a prior or unstated year may be shown as a clearly labeled reference ("prior-year reference, confirm for this year"), never as a current cost. The sourced provider directory is a core asset: it grows only from official pages, and each entry states what remains unconfirmed.
+
+### Additional acceptance criteria
+
+| ID | Observable pass condition |
+|---|---|
+| G10 Continuous path | At any point in a task, the person can name the current stage and next step; coverage is asked once; choosing a plan never requires clinic search |
+| G11 Explained, not invented | Model explanations introduce no fact, number or claim absent from the rules output; unsupported output falls back to rules wording; the task works without a model |
+| G12 Find and get there | A person can find a sourced clinic by need or by name, open directions, and see an official booking link only where one exists, without the product claiming a booking |
