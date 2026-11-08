@@ -8,7 +8,7 @@ function fixture(supported=false){
  vm.runInNewContext(helpers+'\n'+src.slice(src.indexOf('const JOURNEY_KINDS='),src.indexOf('function bindHome()'))+'\nglobalThis.composer=homeComposer;globalThis.prompt=homePrompt;globalThis.updatePrompt=updateHomePrompt;',c);return c;
 }
 test('homepage presents four starting points without a report or complete-profile prerequisite',()=>{
- const html=fixture().composer();for(const k of ['insurance','first_visit','concern','follow_up'])assert.ok(html.includes(`data-journey-kind="${k}"`));assert.ok(!html.includes('data-journey-kind="report"'));assert.ok(html.indexOf('data-journey-kind="insurance"')<html.indexOf('data-journey-kind="first_visit"'));assert.ok(html.includes('name="kind" value="general"'));assert.ok(!html.includes('Follow through'));
+ const html=fixture().composer();for(const k of ['insurance','first_visit','concern','follow_up'])assert.ok(html.includes(`data-journey-kind="${k}"`));assert.ok(!html.includes('data-journey-kind="report"'));const order=['first_visit','concern','follow_up','insurance'].map(k=>html.indexOf(`data-journey-kind="${k}"`));assert.deepEqual([...order].sort((a,b)=>a-b),order);assert.ok(html.includes('Stay healthy')&&html.includes('Manage my care'));assert.ok(html.includes('name="kind" value="general"'));assert.ok(!html.includes('Follow through'));
  assert.ok(html.includes('继续已保存的任务'));assert.ok(!html.includes('dictation-button'));assert.ok(!html.includes('type="file"'));
 });
 test('supported browser exposes explicit modes, starts nothing and escapes the unsaved goal',()=>{

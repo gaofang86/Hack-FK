@@ -3,9 +3,9 @@ import time
 from .navigation import text
 
 KINDS = {'general': '一起理清下一步 / Help me get started',
-         'insurance': '弄清保险和费用 / Understand my insurance and costs',
-         'first_visit': '我想找一位固定医生 / Find a regular doctor', 'concern': '我有新的健康困扰 / A new health concern',
-         'report': '我想讨论检查结果 / Discuss test results', 'follow_up': '跟进结果或医生建议 / Follow up on results or advice'}
+         'first_visit': '主动照顾健康 / Stay healthy', 'concern': '获得就医帮助 / Get care',
+         'follow_up': '跟进已有照护 / Manage my care', 'insurance': '理清保险与费用 / Insurance & costs',
+         'report': '我想讨论检查结果 / Discuss test results'}
 
 
 def create(raw, ident):

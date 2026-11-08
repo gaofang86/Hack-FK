@@ -6,18 +6,18 @@
 const PHRASES={
  en:{
   insurance:['I would like to know what my insurance covers for a doctor visit.','I would like to know how much a visit would cost me.','I would like to compare health insurance plans.','I have student insurance but I am not sure how to use it.','I do not have insurance right now.','I am not sure whether a clinic accepts my insurance.','I need help understanding my deductible and copay.'],
-  first_visit:['I would like to find a primary care doctor near me.','I would like to know what to bring to my first visit.','I would like to know how much a first visit might cost.','I have not seen a doctor in the US before.','I am not sure how my insurance works for a first visit.','I would prefer a doctor who speaks my language.','I need help finding a doctor who accepts my insurance.'],
-  concern:['I would like help describing my symptoms to a clinician.','I would like to know which kind of clinic to contact.','I am not sure whether I should book a visit.','I am not sure which kind of clinic to go to.','I need help finding a clinic I can visit soon.'],
+  first_visit:['I would like to find a primary care doctor near me.','I would like to schedule a checkup.','I would like to know which vaccines or screenings I need.','I would like to know what to bring to my first visit.','I would like to know how much a first visit might cost.','I have not seen a doctor in the US before.','I am not sure how my insurance works for a first visit.','I would prefer a doctor who speaks my language.','I need help finding a doctor who accepts my insurance.'],
+  concern:['I would like to know where to go for care.','I would like to know how booking an appointment works.','I would like help describing my symptoms to a clinician.','I would like to know which kind of clinic to contact.','I am not sure whether I should book a visit.','I am not sure which kind of clinic to go to.','I need help finding a clinic I can visit soon.'],
   report:['I would like help preparing questions for my clinician.','I would like to know who to ask about these results.','I got my test results and I am not sure what to ask.','I need help preparing for a visit about my results.'],
-  follow_up:['I would like help preparing questions about my results.','I got my test results and I am not sure what to ask.','My doctor asked me to come back for a follow-up visit.','My doctor recommended that I see a specialist.','I would like to know whether I need a referral.','I need help booking the next appointment.','I am not sure how to arrange the next step.'],
+  follow_up:['I would like help preparing questions about my results.','I need to refill a prescription.','I would like to organize my reports and visit records.','I got my test results and I am not sure what to ask.','My doctor asked me to come back for a follow-up visit.','My doctor recommended that I see a specialist.','I would like to know whether I need a referral.','I need help booking the next appointment.','I am not sure how to arrange the next step.'],
   general:['I would like help planning my next step.','I need help finding a doctor.','I need help with my insurance.','I am not sure how to get started.']
  },
  zh:{
   insurance:['我想知道我的保险能报销哪些看病费用。','我想知道看一次医生自己要付多少钱。','我想比较几个保险计划。','我有学生保险，但不知道怎么用。','我现在没有医疗保险。','我不确定诊所收不收我的保险。'],
-  first_visit:['我想找一位离我近的家庭医生。','我想知道第一次看病需要带什么。','我想知道第一次看病大概要花多少钱。','我在美国还没看过医生。','我不太清楚我的保险怎么用。','我希望医生能说我的语言。'],
-  concern:['我想整理一下要告诉医生的症状。','我想知道应该联系哪种诊所。','我不确定要不要预约看病。'],
+  first_visit:['我想找一位离我近的家庭医生。','我想预约一次常规体检。','我想知道需要打哪些疫苗或做哪些筛查。','我想知道第一次看病需要带什么。','我想知道第一次看病大概要花多少钱。','我在美国还没看过医生。','我不太清楚我的保险怎么用。','我希望医生能说我的语言。'],
+  concern:['我想知道应该去哪里看病。','我想了解预约流程。','我想整理一下要告诉医生的症状。','我想知道应该联系哪种诊所。','我不确定要不要预约看病。'],
   report:['我想整理一下问医生的问题。','我拿到了检查报告，不知道该问什么。','我想知道这些结果应该问谁。'],
-  follow_up:['我拿到了检查报告，想整理问医生的问题。','医生让我去复诊，我需要帮忙安排时间。','医生建议我去看专科。','我想知道是否需要转诊。','我需要帮忙预约下一次就诊。'],
+  follow_up:['我拿到了检查报告，想整理问医生的问题。','我需要续药。','医生让我去复诊，我需要帮忙安排时间。','医生建议我去看专科。','我想知道是否需要转诊。','我需要帮忙预约下一次就诊。'],
   general:['我想理清接下来应该做什么。','我想请你帮我找医生。','我不太清楚怎样开始。']
  }
 };
