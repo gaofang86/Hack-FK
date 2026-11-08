@@ -191,7 +191,7 @@ class ExplainCoverageTests(unittest.TestCase):
 
     def test_checked_model_text_is_used_and_invented_facts_fall_back(self):
         ok = self.run_explain('You have insurance, but your benefits are not added yet, so the cost is unknown. Call the number on your card.')
-        self.assertIn('local model', ok['source'])
+        self.assertTrue(ok['source'].startswith('local model'), ok)
         made_up = self.run_explain('Your copay is $15 and the clinic is in network confirmed.')
         self.assertIn('rules template', made_up['source']); self.assertIn('unknown (not $0)', made_up['text'])
         self.assertIn('rules template', self.run_explain('You probably have a diagnosis.')['source'])
@@ -208,3 +208,40 @@ class ExplainCheckSanityTests(unittest.TestCase):
     def test_forbidden_pattern_does_not_match_neutral_text(self):
         from app import explain
         self.assertIsNone(explain.FORBIDDEN.search('Call the number on your card and ask about the visit.'))
+
+
+class ExplainComparisonTests(unittest.TestCase):
+    rows = [
+        {"provider": {"name": "SYNTH Clinic A"}, "cost": {"amount": None, "status": "unknown"}, "supported": False, "unavailable": False,
+         "miles": 0.8, "reasons": ["Chinese listed", "Appointment availability needs confirmation"], "confirmation": [1, 2]},
+        {"provider": {"name": "SYNTH Clinic B"}, "cost": {"amount": 120, "status": "user_quote"}, "supported": True, "unavailable": False,
+         "miles": None, "reasons": ["Within your visit budget"], "confirmation": [1]},
+    ]
+
+    def run_explain(self, text, lang='en'):
+        from app import explain
+        return explain.explain_comparison(ExplainCoverageTests.FakeModel(text), self.rows, {"priority": "cost"}, lang)
+
+    def test_ranking_explanations_are_checked(self):
+        ok = self.run_explain('The cost of SYNTH Clinic A is not known yet, and it is 0.8 miles away. SYNTH Clinic B has a $120 quote; ask A about cost.')
+        self.assertTrue(ok['source'].startswith('local model'), ok)
+        for bad in ['SYNTH Clinic B is the best and cheapest choice. Cost of A is unknown.',
+                    'SYNTH Clinic A is in network. Its cost is unknown.',
+                    'SYNTH Clinic A costs $90.',
+                    'SYNTH Clinic A is listed first because Chinese is listed.']:  # omits unknown cost
+            self.assertIn('rules template', self.run_explain(bad)['source'], bad)
+        zh = self.run_explain('', lang='zh')
+        self.assertIn('未知（不是 0）', zh['text'])
+        # Real local-model failures: invented ordering reasons and "confirmed" language support.
+        for bad in ['The first option is prioritized because it was the initial request for service; its cost is not known yet.',
+                    '排序时优先列出这家诊所，因为这是用户明确选择的平衡选项，且该诊所已确认提供语言支持服务。费用未知。']:
+            self.assertIn('rules template', self.run_explain(bad)['source'], bad)
+        # B has supported cost and A does not: the rules sentence says so, whatever the model writes.
+        good = self.run_explain('The cost of SYNTH Clinic A is not known yet; ask the office about cost and language support.')
+        self.assertTrue(good['source'].startswith('local model'), good)
+
+    def test_tied_options_are_described_as_tied(self):
+        from app import explain
+        tied = [dict(r, supported=False, cost={"amount": None}, miles=None) for r in self.rows]
+        en, zh = explain.why_first(tied, "balanced")
+        self.assertIn('same evidence', en); self.assertIn('按名称排列', zh)

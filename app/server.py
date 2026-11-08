@@ -95,6 +95,9 @@ class App:
                 self.report_previews.clear()
             if path == "/api/state" and method == "GET":
                 return self.state()
+            if path == "/api/explain/comparison" and method == "POST":
+                case = self.get_case(body.get("case_id", ""))
+                return explain.explain_comparison(self.model, ranked(case), case["input"], "zh" if body.get("lang") == "zh" else "en")
             if path == "/api/explain/coverage" and method == "POST":
                 case = self.get_journey(body.get("journey_id", ""))
                 return explain.explain_coverage(self.model, case, self.store.data.get("profile", {}), "zh" if body.get("lang") == "zh" else "en")
