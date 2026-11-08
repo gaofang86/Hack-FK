@@ -11,22 +11,24 @@ Updated November 8, 2026 (America/New_York). Product goals: [PLAN.md](PLAN.md), 
 - Dated office answers: availability, language, referral requirement and referral obtained; service/plan/language scope, history and 30-day reconfirmation. Negative availability prevents supported-cost recommendation without deleting the candidate. Required referral creates a follow-through task.
 - Existing quote/network/service confirmation updates the matching candidate. Cash quotes over 30 days old stop supporting cost claims.
 - Home surfaces unfinished journeys and a concrete next question; saved journeys restore the results view.
-- Candidate-specific template preparation; works offline. Ollama remains deferred.
+- Candidate-specific template preparation; works offline. The local text agent now has real Ollama acceptance; microphone and speech remain a later stage.
 - Gateway, DLP, ledger, offline controls and synthetic preflight self-check. Private reply text is protected; forgetting a plan also removes its derived SBC benefits.
 - Disposable rehearsal launcher and prepared demo, submission, user-test and release documents under docs/.
 
 ## Verification
 
-- Latest automated results: see [fresh install report](verification/install.json). It runs the complete suite, static network-import audit, JavaScript syntax check and independent receiver validation in a fresh temporary source copy and venv.
+- Local agent change: 99 automated tests passed, including real HTTP extraction/review/replay protection, plus static network-import audit and JavaScript syntax. This change has not had a fresh-install rerun or browser visual acceptance: Computer Use permissions were unavailable.
+- Real `qwen2.5:3b` acceptance: see [local agent report](verification/agent-local.json). Nine synthetic Chinese/English inputs plus a confirmed two-fact workflow, explicit review, saved language/availability evidence and deterministic ranking; no actual clinic contacts or user health data. This small acceptance set is not a general model reliability guarantee.
+- Earlier baseline automated results: see [fresh install report](verification/install.json). It runs the complete suite, static network-import audit, JavaScript syntax check and independent receiver validation in a fresh temporary source copy and venv.
 - [Receiver observation](verification/privacy-receiver.json): separate app process; one public synthetic search received, two HTTP/redirect failures accounted for, sensitive URL/header/body attempts blocked, no redirect follow or offline request received. Offline template and saved-case read passed. This is controlled loopback observation, not OS-wide capture or real API acceptance.
 - Browser rehearsal: profile creation, NEU example, manual candidate save, negative availability reply, current-provider preparation, home continuation, synthetic privacy self-check and offline saved preparation. Latest referral-required flow retains an obtain-referral task.
 - No real patient details, credentials, provider calls, member login, interviews or completed appointments were used in these checks.
 
-## Deferred integrations (user decision)
+## Integration status
 
 | Item | State | Acceptance |
 |---|---|---|
-| Ollama | Pending; no installation or real-model pass claimed | PLAN.md section 9; labeled templates are available |
+| Ollama | Installed locally with `qwen2.5:3b`; bounded text-agent acceptance recorded separately | See `verification/agent-local.json`; microphone, speech playback and broader preparation-language acceptance remain outside this pass |
 | Tavily / Exa API key | Pending; no credentials supplied or real-service pass claimed | Configure one service locally and verify approved public queries, results, failures and ledger |
 
 ## External evidence still missing
@@ -54,3 +56,32 @@ These require outside evidence or external publication; prepared documents and t
 - [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md): local verification and remaining external handoff.
 
 Use Git for chronology, README for actual usage, PLAN for goals and acceptance. The parent HEALTHCARE_NAVIGATOR_SYSTEM_PLAN.md is a historical proposal.
+
+## Local text-agent scope
+
+- Results → **本地助手 / Local assistant** opens deterministic task/cost tools and a
+  single-turn local Ollama router for dated office-reply proposals.
+- Only selected-clinic language, availability, referral-required and referral-obtained
+  records can be proposed. Exact evidence quotes and explicit human review are required;
+  source/date are supplied by the reviewer. Questions cannot become confirmation facts.
+- Drafts remain in memory, expire after ten minutes, and are invalidated on task change,
+  superseding turns, locking or forgetting. No conversation history is persisted.
+- Language replies now affect fit ordering and reasons. Current negative availability
+  retains a clinic as a backup. Costs, insurance participation and booking state are
+  not agent-writable.
+- Zocdoc insurance IDs require explicit exact-product selection in the plan form;
+  substring matching on a typed name was removed. The external filter is not proof
+  of participation.
+- Reproduce with `python3 scripts/verify_agent.py`; public search credentials are disabled
+  and the vault is disposable. Microphone, transcription and audio playback are not built.
+
+## Navigation and personalization update
+
+Visible Back/home controls, completed-step editing and in-memory browser navigation
+now preserve unsaved form entries within this tab. History stores opaque IDs only;
+locking/forgetting invalidates private snapshots. Results show care preferences,
+sorting rationale and next contact actions before optional general guidance. Care
+language, budget and priority can be changed in place; home next actions refresh
+from the saved task. Nine Node checks cover back/forward drafts, rerenders, isolation, clearing, expired
+IDs, actual preference rendering and candidate-specific next actions. Browser visual verification remains
+unavailable without Computer Use permission; unsaved drafts do not survive reload.

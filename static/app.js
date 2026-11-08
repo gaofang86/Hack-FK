@@ -20,6 +20,65 @@ const fresh = () => ({city:'Boston',state:'MA',zip:'',lat:null,lon:null,insuranc
   age:'',checks:[],none_reported:false,feel:'',need:''});
 const S = {step:0, input:fresh(), state:{services:{},cases:[]}, preview:null, current:null, busy:false, choices:[], safety:null, sub:'symptoms', open:new Set(), view:'loading', health:null, draft:null};
 
+const trail = new NavigationTrail(window.history, crypto.randomUUID());
+let queuedRoute = null;
+function routeKey() {
+  if(S.expect && S.view==='wizard')return 'expect';
+  return S.view==='wizard'?`wizard:${S.step}:${S.step===0?S.sub:''}:${S.step===4?S.current?.id:''}`:S.view;
+}
+function pageSnapshot(withForms=false) {
+  const data={};
+  for(const k of ['view','step','sub','input','draft','visit','plans','sbc','expect','found','safety','preparingProvider'])data[k]=S[k]??null;
+  data.caseId=S.current?.id||null;
+  data.open=[...S.open];
+  data.formValues=withForms?[...document.querySelectorAll('#app form input[name], #app form select[name], #app form textarea[name]')]
+    .filter(el=>!['password','file'].includes(el.type)).map(el=>({name:el.name,value:el.value,checked:el.checked,type:el.type})):[];
+  return data;
+}
+function rememberPage() { if(S.view!=='loading'&&S.view!=='gate')trail.update(pageSnapshot(true)); }
+function trackPage() {
+  if(S.view==='loading')return;
+  if(S.view==='gate'){trail.clear();}
+  const previous=trail.current;
+  trail.visit(routeKey(),pageSnapshot());
+  if(previous!==trail.current)queueMicrotask(()=>{const heading=$('#app h1, #app h2');if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}});
+}
+function backLabel() {
+  if(S.view==='wizard'&&S.step===4)return '返回上一页 / Back';
+  if(S.view==='wizard'&&S.step>0)return '返回上一步 / Previous step';
+  return '返回 / Back';
+}
+function navigationBar() {
+  if(S.view==='gate'||(S.view==='profile'&&!S.state.profile_ready))return '';
+  const back=trail.canGoBack||S.view!=='home';
+  return `<nav class="page-navigation" aria-label="Page navigation">${back?`<button type="button" class="back-link" data-action="page-back">← ${backLabel()}</button>`:'<span>我的健康 / My health</span>'}${S.view!=='home'?'<button type="button" class="text-button" data-action="home-page">我的健康首页 / My health home</button>':''}<span class="navigation-note">${S.view==='wizard'&&S.step<4?'返回可修改，已填内容会保留 / Your entries stay here':'已保存的任务可随时继续 / Saved tasks stay available'}</span></nav>`;
+}
+async function restorePage(id) {
+  if(S.busy){queuedRoute=id;return;}
+  await work(async()=>{
+    S.state=await api('/api/state');
+    if(!S.state.unlocked){S.view='gate';S.current=null;S.health=null;closeDialog();render();return;}
+    const data=trail.restore(id);
+    if(!data){S.view='home';S.expect=null;S.current=null;S.health=await api('/api/profile');render();return;}
+    let current=null;
+    if(data.caseId){
+      try{current=await api('/api/case?id='+encodeURIComponent(data.caseId));}
+      catch{S.view='home';S.expect=null;S.current=null;S.health=await api('/api/profile');render();toast('这条任务已不可用。 / This journey is no longer available.');return;}
+    }
+    for(const k of ['view','step','sub','input','draft','visit','plans','sbc','expect','found','safety','preparingProvider'])S[k]=data[k];
+    S.current=current;S.preview=null;S.open=new Set(data.open);S.health=await api('/api/profile');
+    if(S.found?.id)S.found=await api('/api/case?id='+encodeURIComponent(S.found.id));
+    closeDialog();render();
+    for(const v of data.formValues){
+      const el=document.querySelector(`#app form [name="${CSS.escape(v.name)}"]`);
+      if(el){if(['checkbox','radio'].includes(v.type))el.checked=v.checked;else el.value=v.value;}
+    }
+    rememberPage();window.scrollTo(0,0);
+  });
+}
+window.addEventListener('popstate',event=>{if(event.state?.firstvisitRoute)restorePage(event.state.firstvisitRoute);});
+document.addEventListener('input',event=>{if(event.target.closest('#app form'))rememberPage();});
+
 async function api(path, body) {
   const response = await fetch(path, {method:body === undefined ? 'GET':'POST', headers:{'X-FirstVisit':'local','Content-Type':'application/json'}, ...(body === undefined ? {} : {body:JSON.stringify(body)})});
   const data = await response.json();
@@ -38,7 +97,7 @@ async function work(task, message='Working locally…') {
   document.body.classList.add('busy');
   const status = $('#working'); if (status) status.textContent = message;
   try { await task(); } catch (error) { toast(error.message); }
-  finally { S.busy = false; document.body.classList.remove('busy'); if ($('#working')) $('#working').textContent = ''; }
+  finally { S.busy = false; document.body.classList.remove('busy'); if ($('#working')) $('#working').textContent = ''; if(queuedRoute){const id=queuedRoute;queuedRoute=null;restorePage(id);} }
 }
 function field(label, name, value='', type='text', extra='') {
   return `<label class="field"><span>${label}</span><input name="${name}" type="${type}" value="${esc(value)}" ${extra}></label>`;
@@ -52,7 +111,7 @@ function planFields(plan, prefix='plan_') {
     ${field('Exact plan / network name',prefix+'name',p.name,'text','placeholder="Copy the full name from the plan" maxlength="120"')}
     ${field('Monthly premium ($)',prefix+'premium',p.premium,'number','min="0" max="1000000" step="0.01" placeholder="Optional"')}
     ${field('Coverage starts',prefix+'start',p.start,'date')}${field('Coverage ends (if known)',prefix+'end',p.end,'date')}
-  </div><label class="checkline"><input name="${prefix}eligible" type="checkbox" ${p.eligible?'checked':''}><span>I confirmed my eligibility with the plan or marketplace.</span></label></div>
+  </div>${select('Zocdoc product — choose only after checking your exact plan',prefix+'zocdoc_product',[['','No confirmed product · select on Zocdoc'],['bcbsma_blue_care_elect_ppo','I checked: BCBS Massachusetts · Blue Care Elect (PPO)']],p.zocdoc_product||'')}<p class="hint">A typed name never selects an insurance product. This optional filter is not proof that a clinician is in-network.</p><label class="checkline"><input name="${prefix}eligible" type="checkbox" ${p.eligible?'checked':''}><span>I confirmed my eligibility with the plan or marketplace.</span></label></div>
   <div class="sub-card"><p class="sub-title">What this visit costs you</p>
     ${select(S.input.service==='same_day'?'How the plan pays for an urgent care visit':'How the plan pays for this visit',prefix+'rule', [['copay','A fixed copay (deductible does not apply)'],['deductible','Deductible first, then coinsurance']],rule)}
     <div class="form-grid"><div data-rule-fields="copay" ${rule==='copay'?'':'hidden'}>${field('Visit copay ($)',prefix+'copay',p.copay,'number','min="0" step="0.01"')}</div>
@@ -66,7 +125,7 @@ function planResources() {
 }
 function readPlan(form) {
   const f = new FormData(form), p = {};
-  ['name','premium','start','end','rule','copay','deductible_remaining','coinsurance','oop_remaining'].forEach(k => p[k] = f.get('plan_'+k) ?? '');
+  ['name','premium','start','end','rule','copay','deductible_remaining','coinsurance','oop_remaining','zocdoc_product'].forEach(k => p[k] = f.get('plan_'+k) ?? '');
   p.eligible = f.has('plan_eligible'); return p;
 }
 function collect() {
@@ -84,10 +143,11 @@ function renderHeader() {
     <button class="nav-button" data-action="privacy">Privacy</button>
     ${S.state.unlocked ? '<button class="nav-button" data-action="lock">Lock vault</button>' : S.state.vault_exists ? '<button class="nav-button" data-action="unlock">Unlock vault</button>' : ''}
     </nav></div>`;
+  let bar=$('#page-navigation');if(!bar){bar=document.createElement('div');bar.id='page-navigation';$('#header').after(bar);}bar.innerHTML=navigationBar();
 }
 function sidebar() {
   const names=['You & your health','What matters to you','When & where','Review & find care'];
-  return `<aside class="journey-sidebar"><p class="eyebrow">A CLEARER PATH TO CARE</p><h1>Care that puts<br><em>you first.</em></h1><p class="sidebar-copy">We start with you and your health. Where to go comes after.</p><ol class="steps">${names.map((n,i)=>`<li class="${S.step===i?'active':S.step>i?'done':''}"><span>${S.step>i?icon('check'):String(i+1).padStart(2,'0')}</span><div>${n}<small>${['How you are doing, first','Language and coverage','Location is one detail','You control what is shared'][i]}</small></div></li>`).join('')}</ol><div class="sidebar-note">${icon('shield')}<p>Your health details stay on this device. Searches disclose location and care type; you review the exact queries first.</p></div><button class="text-button" data-action="neu-example">Student insurance scenario · NEU / 02445</button><button class="text-button" data-action="demo">Explore a fictional example ${icon('arrow')}</button></aside>`;
+  return `<aside class="journey-sidebar"><p class="eyebrow">A CLEARER PATH TO CARE</p><h1>Care that puts<br><em>you first.</em></h1><p class="sidebar-copy">We start with you and your health. Where to go comes after.</p><ol class="steps">${names.map((n,i)=>`<li class="${S.step===i?'active':S.step>i?'done':''}">${i<S.step?`<button type="button" class="step-jump" data-step="${i}" aria-label="Edit ${n}">`:''}<span>${S.step>i?icon('check'):String(i+1).padStart(2,'0')}</span><div>${n}<small>${['How you are doing, first','Language and coverage','Location is one detail','You control what is shared'][i]}</small></div>${i<S.step?'</button>':''}</li>`).join('')}</ol><div class="sidebar-note">${icon('shield')}<p>Your health details stay on this device. Searches disclose location and care type; you review the exact queries first.</p></div><button class="text-button" data-action="neu-example">Student insurance scenario · NEU / 02445</button><button class="text-button" data-action="demo">Explore a fictional example ${icon('arrow')}</button></aside>`;
 }
 const serviceName=v=>({follow_up:'Primary-care follow-up',same_day:'Same-day care (urgent care or campus clinic)'})[v]||'Primary-care appointment';
 const lvl=c=>['crisis','poison'].includes(c.level)?'emergency':c.level;
@@ -124,7 +184,7 @@ function safetySummary(){
 }
 function healthHead(title,lede){return `<div class="section-icon">${icon('heart')}</div><p class="eyebrow">01 / YOU & YOUR HEALTH</p><h2>${title}</h2><p class="lede">${lede}</p>`;}
 function healthStep(p){
-  const actions=next=>`<div class="form-actions"><button type="button" class="text-button" data-action="home-page">← Back</button>${next}</div>`;
+  const actions=next=>`<div class="form-actions"><button type="button" class="text-button" data-action="page-back">← 返回 / Back</button>${next}</div>`;
   const cont=`<button type="submit" class="primary">Continue ${icon('arrow')}</button>`;
   if(S.sub==='need') return healthHead('What do you need?','No symptom questions needed.')+
     `<div class="chips">${NEEDS.map(([id,t])=>`<button type="button" class="chip ${p.need===id?'selected':''}" data-need="${id}">${t}</button>`).join('')}</div>
@@ -180,8 +240,8 @@ function renderHome(){
   $('#app').innerHTML=`<div class="home">
   <p class="eyebrow">YOUR HEALTH, IN ONE PLACE</p><h1 class="home-title">${S.justCreated?'Your health, in one place.':'Welcome back.'}</h1><p class="lede">Everything here stays encrypted on this device. It grows with every visit.</p><p class="hint">Profile last reviewed: ${esc(p.reviewed_on||'Not recorded for this older profile')} · ${esc(p.source||'User-entered; review for currentness')}. Visit entries retain their own dates.</p>
   <section class="form-card need-card"><div class="form-card-head"><h3>What do you need today?</h3></div><div class="feel-row">${FEELS.map(([id,t,d])=>`<button type="button" class="choice feel" data-feel="${id}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div></section>
-  <section class="form-card"><div class="form-card-head"><h3>Try a student insurance scenario</h3><p>Default example: Northeastern student plan, living in Brookline 02445. Illustrative person, real clinic sources; benefits and network need confirmation.</p></div><button class="secondary" data-action="neu-example">Explore NEU / 02445</button></section>
   <section class="form-card"><div class="form-card-head"><h3>Continue your care</h3><p>Saved tasks and the next action.</p></div>${(S.state.cases||[]).filter(c=>c.status!=='attended').length?(S.state.cases||[]).filter(c=>c.status!=='attended').map(c=>`<div class="visit-row"><div><strong>${esc(c.service)} · ${esc(c.city)} ${c.demo?'· Fictional demo':''}</strong><p>${esc(c.next_action||'Review your next step')}</p><button class="text-button" data-case="${esc(c.id)}">Continue journey →</button></div></div>`).join(''):'<p class="hint">No unfinished care journeys.</p>'}</section>
+  <details class="example-drawer"><summary>先看看示例 / Explore an example</summary><p>Fictional student inputs with real clinic sources. This does not change your profile.</p><button type="button" class="secondary small" data-action="neu-example">Explore NEU / 02445</button></details>
   <div class="home-grid">
     <section class="form-card"><div class="form-card-head row"><h3>Your health</h3><button type="button" class="text-button" data-action="edit-profile">Edit</button></div>
       <div class="facts"><div><span>Age</span><strong>${h.age??'—'}</strong></div><div><span>Language</span><strong>${esc(p.language||'English')}</strong></div><div><span>Coverage</span><strong>${p.insurance==='yes'?esc(p.plan?.name||'Insured'):p.insurance==='no'?(p.wants_insurance?'Choosing a plan':'No insurance'):'—'}</strong></div></div>
@@ -210,7 +270,7 @@ function renderProfile(){
     ${card('Follow-ups','Visits or tests a clinician asked you to come back for.',listRows('fu',d.fus))}
     ${card('Coverage','Do you have health insurance?',`<div class="choice-grid"><button type="button" class="choice ${d.insurance==='yes'?'selected':''}" data-pins="yes"><span class="choice-radio"></span><strong>Yes</strong><span>I have a plan</span></button><button type="button" class="choice ${d.insurance==='no'?'selected':''}" data-pins="no"><span class="choice-radio"></span><strong>Not right now</strong><span>Self-pay, or choosing a plan</span></button></div>${d.insurance==='yes'?`<div class="sub-card"><p class="sub-title">Your plan</p>${field('Exact plan name','pplan_name',d.plan?.name||'','text','maxlength="120"')}</div>${sbcBox()}`:''}${d.insurance==='no'?`<label class="checkline"><input type="checkbox" name="wants_insurance" ${d.wants_insurance?'checked':''}><span>I’m thinking about getting a plan</span></label>`:''}`)}
     ${!S.state.vault_exists?card('Save it privately','Choose a passphrase. It encrypts your profile on this computer. There is no recovery.',field('Passphrase','passphrase','','password','required minlength="8" maxlength="1000" autocomplete="new-password"')):''}
-    <div class="form-actions">${first?'<span class="small-note">You can change this anytime.</span>':'<button type="button" class="text-button" data-action="home-page">← Cancel</button>'}<button type="submit" class="primary">${first?'Save and continue':'Save'} ${icon('arrow')}</button></div></form></div>`;
+    <div class="form-actions">${first?'<span class="small-note">You can change this anytime.</span>':'<button type="button" class="text-button" data-action="page-back">← Cancel</button>'}<button type="submit" class="primary">${first?'Save and continue':'Save'} ${icon('arrow')}</button></div></form></div>`;
   $('#profile-form').addEventListener('submit',e=>{e.preventDefault();saveProfile();});
   $('#sbc-file')?.addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;if(file.size>6e6)return toast('That PDF is too large (6 MB max).');
     const rd=new FileReader();rd.onload=()=>sendSbc({pdf_base64:String(rd.result).split(',')[1],file_name:file.name});rd.readAsDataURL(file);});
@@ -299,7 +359,7 @@ function renderSbc(){
     ${card('The plan','',`${field('Plan name','name',f.name?.value||'','text','required maxlength="120"')}${ev('name')}<div class="form-grid">${field('Coverage starts','start',f.start?.value||'','date')}${field('Coverage ends','end',f.end?.value||'','date')}</div><div class="form-grid three">${field('Deductible ($)','deductible',f.deductible?.value??'','number','min="0" step="0.01"')}${field('Used so far this year ($)','deductible_used','','number','min="0" step="0.01" placeholder="0 if none"')}${field('Out-of-pocket limit ($)','oop_max',f.oop_max?.value??'','number','min="0" step="0.01"')}</div>${ev('deductible')}${ev('oop_max')}${field('Monthly premium ($, optional)','premium','','number','min="0" step="0.01"')}`)}
     ${card('What you pay for each kind of care','In-network, as the SBC says.',Object.entries(r.services).map(([k,v])=>costInputs(k,v)).join(''))}
     <p class="computed">${icon('lock')} ${esc(r.source.how)} The file itself isn’t saved, only these values and a fingerprint of the file.</p>
-    <div class="form-actions"><button type="button" class="text-button" data-action="edit-profile">← Back</button><button type="submit" class="primary">Save to my profile ${icon('arrow')}</button></div></form></div>`;
+    <div class="form-actions"><button type="button" class="text-button" data-action="page-back">← 返回 / Back</button><button type="submit" class="primary">Save to my profile ${icon('arrow')}</button></div></form></div>`;
   $('#sbc-form').addEventListener('submit',e=>{e.preventDefault();saveSbc();});
 }
 async function saveSbc(){
@@ -317,9 +377,10 @@ async function afterUnlock(){ S.justCreated=false; S.health=await api('/api/prof
 function renderKnown(){
   const p=S.health.profile, row=(field,value,label)=>`<div class="known-row"><span>${esc(label)}</span><button type="button" class="text-button" data-forget="${field}" data-value="${esc(value)}">Forget</button></div>`;
   const rows=[...(p.birth_year?[row('birth_year','',`Birth year ${p.birth_year}`)]:[]),...(p.sex?[row('sex','',`Sex: ${p.sex}`)]:[]),...(p.conditions||[]).map(v=>row('conditions',v,`Condition: ${v}`)),...(p.medications||[]).map(v=>row('medications',v,`Medication: ${v}`)),...(p.allergies||[]).map(v=>row('allergies',v,`Allergy: ${v}`)),...(p.follow_ups||[]).map(f=>row('follow_ups',f.what,`Follow-up: ${f.what}`)),...(p.plan?[row('plan','',`Plan: ${p.plan.name}`)]:[]),...(p.visits||[]).map(v=>row('visit',v.id,`Visit ${v.date}: ${v.reason}`)),row('visits','',`Saved searches and all visits: ${S.state.cases.length} searches, ${(p.visits||[]).length} visits`)];
-  $('#app').innerHTML=`<div class="home narrow"><p class="eyebrow">WHAT WE KNOW</p><h1 class="home-title">Everything FirstVisit knows about you.</h1><p class="lede">All of it is encrypted on this device. None of it is sent with searches.</p><details class="form-card"><summary>Sources and review dates</summary>${Object.entries(p.fact_sources||{}).map(([k,v])=>`<p><strong>${esc(k)}</strong><br>${esc(v.source)} · ${esc(v.reviewed_on||'Date not recorded')}. User-reported; review whether still current.</p>`).join('')||'<p>Older profile: source dates were not recorded. Review and save your profile to add a review date.</p>'}</details>${card('Your saved information','Forget any item. This can’t be undone.',`<div class="known">${rows.join('')}</div>`)}<div class="form-actions"><button type="button" class="text-button" data-action="home-page">← Back</button><button type="button" class="secondary" data-forget="everything">Forget everything</button></div></div>`;
+  $('#app').innerHTML=`<div class="home narrow"><p class="eyebrow">WHAT WE KNOW</p><h1 class="home-title">Everything FirstVisit knows about you.</h1><p class="lede">All of it is encrypted on this device. None of it is sent with searches.</p><details class="form-card"><summary>Sources and review dates</summary>${Object.entries(p.fact_sources||{}).map(([k,v])=>`<p><strong>${esc(k)}</strong><br>${esc(v.source)} · ${esc(v.reviewed_on||'Date not recorded')}. User-reported; review whether still current.</p>`).join('')||'<p>Older profile: source dates were not recorded. Review and save your profile to add a review date.</p>'}</details>${card('Your saved information','Forget any item. This can’t be undone.',`<div class="known">${rows.join('')}</div>`)}<div class="form-actions"><button type="button" class="text-button" data-action="page-back">← 返回 / Back</button><button type="button" class="secondary" data-forget="everything">Forget everything</button></div></div>`;
 }
 function render() {
+  trackPage();
   renderHeader();
   if (S.view==='loading') { $('#app').innerHTML='<div class="home"><p class="lede">Loading…</p></div>'; return; }
   if (S.view==='gate') return renderGate();
@@ -331,12 +392,13 @@ function render() {
   if (S.view==='sbc') return renderSbc();
   if (S.expect) return renderExpect();
   if (S.step===4 && S.current) return renderResults();
-  $('#app').innerHTML = `<div class="wizard-layout">${sidebar()}<section class="form-panel">${S.input.scenario==='neu_student'?'<div class="notice">DEFAULT STUDENT INSURANCE SCENARIO · Northeastern / Brookline 02445. Review this illustrative person and confirm your exact current-year plan; benefits and enrollment are not pre-confirmed.</div>':''}${S.input.demo?'<div class="demo-banner">FICTIONAL DEMO · No actual providers, prices, ratings or insurance offers</div>':''}<form id="wizard">${stepContent()}${S.step===0?'':`<div class="form-actions">${S.step>0?'<button type="button" class="text-button" data-action="back">← Back</button>':'<span class="small-note">A few steps to a clearer choice.</span>'}<button type="submit" class="primary">${S.step===3?(S.preview?'Find my care':'Review search'):'Continue'} ${icon('arrow')}</button></div>`}<div id="working" role="status" class="working"></div></form></section></div>`;
+  $('#app').innerHTML = `<div class="wizard-layout">${sidebar()}<section class="form-panel">${S.input.scenario==='neu_student'?'<div class="notice">DEFAULT STUDENT INSURANCE SCENARIO · Northeastern / Brookline 02445. Review this illustrative person and confirm your exact current-year plan; benefits and enrollment are not pre-confirmed.</div>':''}${S.input.demo?'<div class="demo-banner">FICTIONAL DEMO · No actual providers, prices, ratings or insurance offers</div>':''}<form id="wizard">${stepContent()}${S.step===0?'':`<div class="form-actions">${S.step>0?'<button type="button" class="text-button" data-action="page-back">← 返回上一步 / Previous step</button>':'<span class="small-note">A few steps to a clearer choice.</span>'}<button type="submit" class="primary">${S.step===3?(S.preview?'Find my care':'Review search'):'Continue'} ${icon('arrow')}</button></div>`}<div id="working" role="status" class="working"></div></form></section></div>`;
   $('#wizard').addEventListener('submit', event => {event.preventDefault(); advance();});
 }
 async function advance() {
   if (!$('#wizard').reportValidity()) return;
   collect();
+  rememberPage();
   if(S.step===0){
     if(S.sub==='symptoms' && !S.input.checks.length && !S.input.description.trim()) return toast('Pick what’s bothering you, or describe it in a few words.');
     if(S.sub==='need'){
@@ -376,6 +438,7 @@ function providerCard(row,index) {
   return `<article class="provider-card ${index===0&&row.supported&&row.cost.amount!=null&&!row.unavailable?'first':''}"><div class="card-top"><div class="provider-avatar">${icon('building')}</div><div class="provider-title"><div class="provider-label">${esc(p.kind)}${p.demo?' · DEMO':''}</div><h3>${esc(p.name)}</h3><p>${esc(p.address)}${p.phone?' · '+esc(p.phone):''}</p></div><span class="rank">${row.supported&&row.cost.amount!=null&&!row.unavailable?String(index+1).padStart(2,'0'):'?'}</span></div><div class="card-stats"><div><span>YOUR VISIT COST</span><strong class="price">${dollars(row.cost.amount)}</strong><small>${costLabel(row.cost)} · ${row.pathway}</small></div><div><span>PATIENT EXPERIENCE</span><strong>${rating?`<span class="star">★</span> ${rating.value.toFixed(1)} <small>/ 5</small>`:'Not available'}</strong><small>${rating?`${rating.count} ${p.demo?'synthetic':'user-entered'} reviews`:'No sourced rating yet'}</small></div><div><span>DISTANCE</span><strong>${row.miles==null?'Not verified':`${row.miles} mi`}</strong><small>${row.miles==null?'Check the source location':'Straight-line; not travel time'}</small></div></div><ul class="match-reasons">${row.reasons.map(r=>`<li>${icon('check')}${esc(r)}</li>`).join('')}</ul>${row.confirmation?.length?`<details class="evidence" open><summary>Next: confirm with this office</summary><ul>${row.confirmation.map(t=>`<li>${esc(t.question)}${t.reason?`<p class="hint">${esc(t.reason)}</p>`:''}</li>`).join('')}</ul><p class="hint">Save price, service and network answers using Add quote / confirmation. Use Record office reply for availability, language and referral answers. Record appointment outcomes separately.</p></details>`:''}<details class="evidence"><summary>Cost, insurance & evidence</summary><p>${esc(p.source_note)}</p><p class="hint">Source checked: ${esc(p.checked_on)}. Patient reviews describe experience, not clinical quality.</p>${rating?`<p class="hint">Rating source: ${esc(rating.source)} · ${esc(rating.checked_on)}</p>`:''}<p><strong>Insurance:</strong> ${esc(row.insured.reason)}</p>${row.cost.breakdown.map(b=>`<div class="compare-line"><span>${esc(b.label)}</span><strong>${dollars(b.amount)}</strong></div>`).join('')}<p class="hint">Price source: ${esc(row.cost.source || 'No scoped price yet')}${row.cost.checked_on?' · '+esc(row.cost.checked_on):''}</p>${S.current.input.plan?compareBlock(row):'<p>Add a plan to compare the same visit with insurance.</p>'}${link}</details>${p.answers?.length?`<details class="evidence"><summary>Recorded replies (${p.answers.length})</summary>${p.answers.slice().reverse().map(a=>`<p><strong>${esc(a.key)} · ${esc(a.result)}</strong> — ${esc(a.answer)}<br><small>${esc(a.checked_on)} · ${esc(a.source)} · user-entered</small></p>`).join('')}<p class="hint">Replies older than 30 days or for another plan/service/language need reconfirmation.</p></details>`:''}<div class="card-actions"><button class="text-button" data-answer="${p.id}">Record office reply</button><button class="primary small" data-prepare="${p.id}">Prepare this visit ${icon('arrow')}</button><button class="text-button" data-quote="${p.id}">Add quote / confirmation</button></div></article>`;
 }
 function renderExpect(){
+  trackPage();
   renderHeader();
   const x=S.expect, d=x.data, ill=d.illustration;
   const status=x.status==='searching'?`<div class="expect-status">${icon('pin')}<div><strong>Finding places near you…</strong><span>While that runs, here’s what to expect.</span></div></div>`
@@ -422,7 +485,7 @@ function renderPlans(){
     ${P.plans.map(planCard).join('')}
     ${P.plans.length<3?'<button type="button" class="secondary small" data-action="add-plan">+ Add another plan</button>':''}
     ${R?`<section class="form-card result-card"><div class="form-card-head"><h3>Your yearly estimate</h3><p>${esc(R.note)}</p></div><div class="plan-results">${R.plans.map(pl=>`<div class="plan-result ${R.best===pl.name?'best':''}"><div class="pr-head"><strong>${esc(pl.name)}</strong>${R.best===pl.name?'<span class="tag">Lowest known total</span>':''}</div><div class="pr-total">${pl.year_total==null?'Add the premium':dollars(pl.year_total)}<small>${pl.year_total==null?'':' per year'}</small></div><p>${pl.premium_year==null?'Premium unknown':`${dollars(pl.premium_year)} premiums`} + ${dollars(pl.care_total)} care${pl.capped?' (capped at your out-of-pocket max)':''}</p>${pl.not_covered.length?`<p class="warn">Not covered: ${pl.not_covered.map(esc).join(', ')}</p>`:''}${pl.unknown.length?`<p class="warn soft">Still unknown: ${pl.unknown.map(esc).join(', ')}</p>`:''}</div>`).join('')}</div><p class="hint">${R.sources.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title)}</a>`).join(' · ')}</p></section>`:''}
-    <div class="form-actions"><button type="button" class="text-button" data-action="${S.current?'back-to-results':'home-page'}">← Back</button><button type="submit" class="primary">Calculate ${icon('arrow')}</button></div></form></div>`;
+    <div class="form-actions"><button type="button" class="text-button" data-action="page-back">← 返回 / Back</button><button type="submit" class="primary">Calculate ${icon('arrow')}</button></div></form></div>`;
   $('#plans-form').addEventListener('submit',e=>{e.preventDefault();calcPlans();});
 }
 function readPlans(){
@@ -455,13 +518,50 @@ function studentPlanReference(r){
     <p>${r.links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.title)} ↗</a>`).join(' · ')}</p>
     <p>${esc(r.contact)}</p><p class="hint">${esc(r.member_status)} ${esc(r.external_handoff)}</p></section>`;
 }
+const PRIORITY_LABELS={balanced:'适合我 / My fit',cost:'优先费用 / Cost first',rating:'优先评价 / Patient ratings',distance:'优先距离 / Distance first'};
+function personalizedContext(c) {
+  const p=c.input;
+  const why={balanced:'先看接诊状态、服务依据和预算，再比较语言匹配与费用。 / Availability, service evidence and budget first; then language fit and cost.',cost:'按有依据的个人费用比较；未知费用不能当成便宜。 / Compare supported personal costs; unknown is not cheap.',rating:'使用有来源的患者评价；它不等于医疗质量。 / Sourced patient experience, not clinical quality.',distance:'只比较已知坐标的直线距离；不是通勤时间。 / Known straight-line distance, not travel time.'};
+  const items=[['本次需求 / Care',p.need==='refill'?'Prescription refill':p.need==='checkup'?'Checkup / preventive visit':serviceName(p.service)],['语言支持 / Language',p.language],['预算 / Visit budget',p.budget==null?'未设置 / Not set':dollars(p.budget)],['支付方式 / Payment',p.insurance==='yes'?(p.plan?.name||'Insured · exact plan to confirm'):'自费 / Self-pay'],['时间与地点 / When & where',`${p.visit_date} · ${p.zip||p.city}, ${p.state}`]];
+  return `<section class="personalized-context" aria-labelledby="your-priorities"><div class="context-heading"><div><p class="eyebrow">根据你这次的需求 / YOUR CARE PREFERENCES</p><h2 id="your-priorities">你的偏好 / Your priorities</h2></div><button type="button" class="secondary small" data-action="edit-preferences">修改偏好 / Edit preferences</button></div><dl class="preference-facts">${items.map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl><p class="ranking-explanation"><strong>${esc(PRIORITY_LABELS[p.priority])}：</strong>${esc(why[p.priority])}</p><p class="hint">只比较当前找到的选项；待确认信息不会被当作已满足。 / Only the options found, with missing evidence kept explicit.</p></section>`;
+}
+function nextStepPanel(c) {
+  const complete=c.status==='attended', booked=c.status==='booked';
+  const row=c.results.find(r=>booked?r.provider.id===c.contact?.provider_id:!r.unavailable);
+  const action=complete?'<button type="button" class="primary" data-action="home-page">查看后续待办 / View follow-ups</button>':row?`<button type="button" class="primary" data-prepare="${esc(row.provider.id)}">${booked?'查看就诊准备 / Visit preparation':'准备联系这家 / Prepare to contact'}</button>${!booked?`<button type="button" class="secondary" data-answer="${esc(row.provider.id)}">记录诊所答复 / Record office reply</button>`:''}`:'<button type="button" class="primary" data-action="add-candidate">添加其他诊所 / Add another clinic</button>';
+  return `<section class="next-step-panel" aria-labelledby="next-step-title"><div><p class="eyebrow">继续推进这件事 / YOUR NEXT STEP</p><h2 id="next-step-title">${complete?'继续后续照护 / Follow through after your visit':booked?'准备就诊 / Prepare for your appointment':row?`先联系这家 / Start here: ${esc(row.provider.name)}`:'找另一个选项 / Find another option'}</h2><p>${esc(row||complete?c.next_action:'当前没有可继续联系的候选。保留现有记录，并添加另一家诊所。')}</p>${!booked&&!complete&&row?'<p class="hint">这是下一步联系对象，不代表费用、保险或预约已经确认。 / A next contact, not a verified appointment or coverage recommendation.</p>':''}</div><div class="next-step-actions">${action}<button type="button" class="text-button" data-action="agent">让本地助手帮我梳理 / Ask the local assistant</button></div></section>`;
+}
+function preferencesDialog() {
+  const c=S.current,p=c.input;
+  openDialog('调整这次就医的偏好 / Your care preferences',`<p>更新后立即重新排列当前候选，已有答复和报价保留。 / Reorders this shortlist while keeping its evidence.</p><form id="preferences-form">${select('优先考虑 / Put first','priority',Object.entries(PRIORITY_LABELS),p.priority)}<div class="form-grid">${select('需要的语言支持 / Care language','language',[['English','English'],['Chinese','中文 / Chinese'],['Spanish','Español / Spanish']],p.language)}${field('本次预算 / Visit budget ($, optional)','budget',p.budget,'number','min="0" step="0.01"')}</div><p class="hint">修改语言后，其他语言的答复不会自动算作确认。 / Replies about another language do not confirm this preference.</p><button type="submit" class="primary">保存并更新选项 / Update my options</button></form>`,true);
+  $('#preferences-form').addEventListener('submit',event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));work(async()=>{S.current=await api('/api/case/preferences',{id:c.id,...values});closeDialog();render();toast('偏好已更新，候选已重新排序。 / Preferences saved; shortlist updated.');});});
+}
+
 function renderResults() {
   const c=S.current,p=c.input,known=c.results.filter(r=>r.supported&&r.cost.amount!=null&&!r.unavailable),min=known.length?Math.min(...known.map(r=>r.cost.amount)):null;
-  $('#app').innerHTML=`<div class="results-page">${p.scenario==='neu_student'?'<div class="notice">STUDENT INSURANCE SCENARIO · NEU / Brookline 02445. Illustrative person, real provider sources. NUSHP product, plan year, enrollment, prices and exact network need confirmation. <a href="https://studenthealthplan.northeastern.edu/" target="_blank" rel="noopener noreferrer">Check NUSHP documents ↗</a></div>':''}${p.demo?'<div class="demo-banner">FICTIONAL DEMO · These are not actual care recommendations or insurance offers.</div>':''}<div class="results-heading"><div><p class="eyebrow">YOUR NEXT STEP, A LITTLE CLEARER</p><h1>Care around <em>you.</em></h1><p>${esc(p.city)}, ${esc(p.state)} <span class="dot">·</span> ${serviceName(p.service)} <span class="dot">·</span> ${esc(p.visit_date)}</p></div><button class="secondary" data-action="new">Start a new search ${icon('arrow')}</button></div><div class="result-metrics"><div><span>OPTIONS FOUND</span><strong>${c.results.length}<small> in your shortlist</small></strong></div><div><span>LOWEST SUPPORTED COST</span><strong>${dollars(min)}<small>${known.length?' for this visit':' · confirm quotes first'}</small></strong></div><div><span>YOUR HEALTH PROFILE</span><strong>${icon('lock')} Stays local</strong></div></div>${studentPlanReference(c.plan_reference)}${scenarioPanel(c.scenario)}${(c.sources||[]).map(sourceCard).join('')}${c.errors.length?`<div class="notice">Live discovery had a problem: ${c.errors.map(esc).join('; ')}. Available local results remain below.</div>`:''}<div class="results-layout"><section><div class="results-toolbar"><div><h2>Your shortlist</h2>${!p.demo?'<button class="secondary small" data-action="add-candidate">Add a provider you found</button>':''}<p>Ordered by your preferences, among the options found.</p></div>${select('Sort by','result_priority',[['balanced','My fit'],['cost','Lowest cost'],['rating','Patient rating'],['distance','Distance']],p.priority)}</div>${c.results.length?['<h3>Supported cost comparisons</h3>',...(known.length?known.map((r,i)=>providerCard(r,i)):['<p class="hint">No supported visit prices yet. Confirm the evidence below before comparing costs.</p>']),'<h3>Options needing confirmation</h3>',...c.results.filter(r=>!known.includes(r)).map((r,i)=>providerCard(r,i))].join(''):'<div class="empty"><h3>No local providers found here yet.</h3><p>Live discovery is not connected. You can use the official health-center finder below; this shortlist will not substitute providers from another city.</p><a href="https://findahealthcenter.hrsa.gov/" target="_blank" rel="noopener noreferrer">Find a community health center ↗</a></div>'}</section><aside class="results-aside"><div class="aside-panel"><span class="aside-icon">${icon('shield')}</span><h3>${p.insurance==='yes'?'Make your benefits work for you.':'Would insurance change the picture?'}</h3><p>Compare the same visit, then include what the plan itself costs.</p>${p.plan?`<div class="plan-chip"><span>PLAN SCENARIO</span><strong>${esc(p.plan.name)}</strong><small>${p.plan.start?'Starts '+esc(p.plan.start):'Start date unconfirmed'} · ${p.plan.eligible?'Eligibility entered as confirmed':'Eligibility unconfirmed'}</small></div>`:'<p class="hint">No plan entered. Add a quote to calculate a scenario; unknown prices stay unknown.</p>'}<button class="primary full" data-action="plan">${p.plan?'Edit plan comparison':'Compare an insurance plan'} ${icon('arrow')}</button><p class="hint">Potential savings depend on eligibility, coverage dates, exact network and benefit rules. A lower visit copay does not always mean a lower total.</p><a href="${p.state==='MA'?'https://betterhealthconnector.com/get-started/individuals-families':'https://www.healthcare.gov/see-plans/'}" target="_blank" rel="noopener noreferrer" class="text-button">Explore official coverage options ↗</a></div><div class="aside-panel quiet"><h3>What we know. What we don’t.</h3><p>${p.demo?'This sample illustrates the complete comparison with fictional data.':c.live_searched?'Live discovery adds leads to a small sourced directory. Search matches still need provider confirmation.':'This is a small sourced directory, not an exhaustive search.'}</p><p>Appointments, exact networks and complete charges need confirmation. Unknown price never means free.</p><a href="https://www.healthcare.gov/choose-a-plan/your-total-costs/" target="_blank" rel="noopener noreferrer">How health costs work ↗</a></div><div class="aside-panel quiet"><h3>Your ongoing care journey</h3><p>Status: <strong>${esc(c.status)}</strong></p><p class="hint">A booking link does not confirm an appointment. Record the outcome after contacting the provider.</p><button class="text-button" data-action="contact">Update appointment status →</button><button class="secondary small record-visit" data-action="record-visit">I went · record the visit ${icon('arrow')}</button></div></aside></div></div>`;
+  $('#app').innerHTML=`<div class="results-page">${p.scenario==='neu_student'?'<div class="notice">STUDENT INSURANCE SCENARIO · NEU / Brookline 02445. Illustrative person, real provider sources. NUSHP product, plan year, enrollment, prices and exact network need confirmation. <a href="https://studenthealthplan.northeastern.edu/" target="_blank" rel="noopener noreferrer">Check NUSHP documents ↗</a></div>':''}${p.demo?'<div class="demo-banner">FICTIONAL DEMO · These are not actual care recommendations or insurance offers.</div>':''}<div class="results-heading"><div><p class="eyebrow">YOUR NEXT STEP, A LITTLE CLEARER</p><h1>你的就医计划 / <em>Your care plan.</em></h1><p>${esc(p.city)}, ${esc(p.state)} <span class="dot">·</span> ${serviceName(p.service)} <span class="dot">·</span> ${esc(p.visit_date)}</p></div><div class="dialog-actions"><button class="primary" data-action="agent">本地助手 / Local assistant</button><button class="secondary" data-action="new">新建任务 / New task ${icon('arrow')}</button></div></div><div class="result-metrics"><div><span>OPTIONS FOUND</span><strong>${c.results.length}<small> in your shortlist</small></strong></div><div><span>LOWEST SUPPORTED COST</span><strong>${dollars(min)}<small>${known.length?' for this visit':' · confirm quotes first'}</small></strong></div><div><span>YOUR HEALTH PROFILE</span><strong>${icon('lock')} Stays local</strong></div></div>${personalizedContext(c)}${nextStepPanel(c)}<details class="supporting-guidance"><summary>需要时再看：保险说明与其他查找入口 / Insurance guidance & other ways to find care</summary>${studentPlanReference(c.plan_reference)}${scenarioPanel(c.scenario)}${(c.sources||[]).map(sourceCard).join('')}</details>${c.errors.length?`<div class="notice">Live discovery had a problem: ${c.errors.map(esc).join('; ')}. Available local results remain below.</div>`:''}<div class="results-layout"><section><div class="results-toolbar"><div><h2>按你的条件比较 / Your shortlist</h2>${!p.demo?'<button class="secondary small" data-action="add-candidate">Add a provider you found</button>':''}<p>Ordered by your preferences, among the options found.</p></div>${select('Sort by','result_priority',[['balanced','My fit'],['cost','Lowest cost'],['rating','Patient rating'],['distance','Distance']],p.priority)}</div>${c.results.length?['<h3>Supported cost comparisons</h3>',...(known.length?known.map((r,i)=>providerCard(r,i)):['<p class="hint">No supported visit prices yet. Confirm the evidence below before comparing costs.</p>']),'<h3>Options needing confirmation</h3>',...c.results.filter(r=>!known.includes(r)).map((r,i)=>providerCard(r,i))].join(''):'<div class="empty"><h3>No local providers found here yet.</h3><p>Live discovery is not connected. You can use the official health-center finder below; this shortlist will not substitute providers from another city.</p><a href="https://findahealthcenter.hrsa.gov/" target="_blank" rel="noopener noreferrer">Find a community health center ↗</a></div>'}</section><aside class="results-aside"><div class="aside-panel"><span class="aside-icon">${icon('shield')}</span><h3>${p.insurance==='yes'?'Make your benefits work for you.':'Would insurance change the picture?'}</h3><p>Compare the same visit, then include what the plan itself costs.</p>${p.plan?`<div class="plan-chip"><span>PLAN SCENARIO</span><strong>${esc(p.plan.name)}</strong><small>${p.plan.start?'Starts '+esc(p.plan.start):'Start date unconfirmed'} · ${p.plan.eligible?'Eligibility entered as confirmed':'Eligibility unconfirmed'}</small></div>`:'<p class="hint">No plan entered. Add a quote to calculate a scenario; unknown prices stay unknown.</p>'}<button class="primary full" data-action="plan">${p.plan?'Edit plan comparison':'Compare an insurance plan'} ${icon('arrow')}</button><p class="hint">Potential savings depend on eligibility, coverage dates, exact network and benefit rules. A lower visit copay does not always mean a lower total.</p><a href="${p.state==='MA'?'https://betterhealthconnector.com/get-started/individuals-families':'https://www.healthcare.gov/see-plans/'}" target="_blank" rel="noopener noreferrer" class="text-button">Explore official coverage options ↗</a></div><div class="aside-panel quiet"><h3>What we know. What we don’t.</h3><p>${p.demo?'This sample illustrates the complete comparison with fictional data.':c.live_searched?'Live discovery adds leads to a small sourced directory. Search matches still need provider confirmation.':'This is a small sourced directory, not an exhaustive search.'}</p><p>Appointments, exact networks and complete charges need confirmation. Unknown price never means free.</p><a href="https://www.healthcare.gov/choose-a-plan/your-total-costs/" target="_blank" rel="noopener noreferrer">How health costs work ↗</a></div><div class="aside-panel quiet"><h3>Your ongoing care journey</h3><p>Status: <strong>${esc(c.status)}</strong></p><p class="hint">A booking link does not confirm an appointment. Record the outcome after contacting the provider.</p><button class="text-button" data-action="contact">Update appointment status →</button><button class="secondary small record-visit" data-action="record-visit">I went · record the visit ${icon('arrow')}</button></div></aside></div></div>`;
   $('[name="result_priority"]').addEventListener('change',event=>work(async()=>{S.current=await api('/api/case/preferences',{id:c.id,priority:event.target.value});render();}));
 }
+
+const AGENT_KEYS={language:'中文等语言 / Language or interpreter support',availability:'接收新病人或有合适预约 / Suitable new-patient appointment',referral:'需要转诊或授权 / Referral required',referral_action:'已取得转诊或授权 / Referral obtained'};
+function agentDialog(status, result=null, input={}) {
+  const c=S.current;
+  let output='';
+  if(result){
+    output=`<p role="status">${esc(result.text)}</p>`;
+    if(result.state==='read')output+=`<p><strong>下一步 / Next:</strong> ${esc(result.next_action)}</p>${result.rows.map(r=>`<section class="sub-card"><h3>${esc(r.name)}</h3><p>${esc(r.address)}</p><p>${r.unavailable?'备选：目前没有合适预约 / Backup: no suitable appointment':''}</p><p><strong>${dollars(r.cost.amount)}</strong> · ${esc(r.pathway)}</p><p>${esc(r.cost.reason)}</p>${r.cost.source?`<p>${esc(r.cost.source)} · ${esc(r.cost.checked_on)}</p>`:''}${r.cost.breakdown.map(b=>`<p>${esc(b.label)}: ${dollars(b.amount)}</p>`).join('')}<ul>${(result.tool==='costs'?r.questions.map(q=>q.question):r.reasons).map(t=>`<li>${esc(t)}</li>`).join('')}</ul></section>`).join('')}`;
+    if(result.state==='proposal')output+=`<form id="agent-confirm"><div class="soft-note"><strong>${esc(result.provider.name)}</strong><br>${esc(result.provider.address)}<br>语言 / Language: ${esc(result.scope.language)} · ${esc(serviceName(result.scope.service))}<br>请逐条核对；结果可修正。不勾选的项目不会保存。 / Review each fact; uncheck to omit.</div>${result.replies.map(r=>`<section class="sub-card"><label class="checkline"><input type="checkbox" name="keep_${r.key}" checked><span>${esc(r.key==='language'?result.scope.language+' 语言或翻译支持 / Language support':AGENT_KEYS[r.key])}</span></label><blockquote>${esc(r.evidence)}</blockquote>${select('核对结果 / Reviewed result','result_'+r.key,[['yes','是 / Yes'],['no','否 / No'],['unknown','未知 / Unknown']],r.result)}</section>`).join('')}${field('实际来源或联系人 / Actual source or person','source','','text','required maxlength="500"')}${field('实际确认日期 / Date actually checked','checked_on','','date',`required max="${today()}"`)}<p class="hint">这是用户记录，不是独立验证，也不代表预约成功。草稿 10 分钟后失效。 / User-reported evidence, not an independent verification or booking. Draft expires in 10 minutes.</p><button class="primary">确认并保存 / Confirm and save</button></form>`;
+  }
+  openDialog('本地就医任务助手 / Local care assistant',`<p>只处理当前任务与诊所答复；不评估症状。文字仅发往本机 Ollama。对话不保存；只有你确认的事实进入加密档案。 / Care tasks and office replies only. Text goes to local Ollama; only confirmed facts are saved.</p><p class="hint">${status.available?`本地模型 / Local model: ${esc(status.model)}`:`本地模型未就绪 / Local model not ready: ${esc(status.model)}. ${esc(status.reason)}. Read tools still work.`}</p><div class="dialog-actions"><button class="secondary" id="agent-overview">查看任务 / View task</button><button class="secondary" id="agent-costs">查看费用 / View costs</button><button class="text-button" data-action="agent">重新检查模型 / Recheck model</button></div><form id="agent-turn">${select('先选择答复对应的诊所 / Clinic for this reply','provider_id',[['','请选择 / Select a clinic'],...c.providers.map(p=>[p.id,p.name+' · '+p.address])],input.provider_id||'')}<label class="field"><span>诊所怎么说？也可以问下一步或费用。 / Office reply or task question</span><textarea name="message" rows="3" maxlength="3000" required placeholder="这家诊所有中文翻译，但目前不收新病人。">${esc(input.message||'')}</textarea></label><button class="primary" ${status.available?'':'disabled'}>整理并预览 / Interpret and preview</button><p id="agent-working" role="status"></p></form><div class="agent-output" aria-live="polite">${output}</div>`,true);
+  const read=tool=>work(async()=>{const r=await api('/api/agent/turn',{id:c.id,tool});agentDialog(status,r,{provider_id:$('#agent-turn').elements.provider_id.value,message:$('#agent-turn').elements.message.value});});
+  $('#agent-overview').addEventListener('click',()=>read('overview'));
+  $('#agent-costs').addEventListener('click',()=>read('costs'));
+  $('#agent-turn').addEventListener('submit',e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));work(async()=>{$('#agent-working').textContent='正在本机处理… / Working locally…';try{const r=await api('/api/agent/turn',{id:c.id,...data});agentDialog(status,r,data);}finally{if($('#agent-working'))$('#agent-working').textContent='';}});});
+  if($('#agent-confirm'))$('#agent-confirm').addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target),results={};for(const r of result.replies)if(f.has('keep_'+r.key))results[r.key]=f.get('result_'+r.key);work(async()=>{const saved=await api('/api/agent/confirm',{id:c.id,token:result.token,confirmed:true,results,source:f.get('source'),checked_on:f.get('checked_on')});S.current=saved.case;closeDialog();render();toast(`已保存 ${saved.saved} 条答复并更新排序。 / Replies saved; shortlist updated.`);});});
+}
+
 function openDialog(title,html,wide=false) {
-  const d=$('#dialog'); d.innerHTML=`<div class="dialog-head"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close" aria-label="Close dialog">×</button></div>${html}`; d.className=wide?'wide':''; if(!d.open)d.showModal();
+  const d=$('#dialog'); d.innerHTML=`<div class="dialog-head"><h2 id="dialog-title">${title}</h2><button type="button" class="text-button dialog-back" data-action="close" aria-label="Back to current page">← 返回 / Back</button></div>${html}`; d.className=wide?'wide':''; if(!d.open)d.showModal();
 }
 function closeDialog() {$('#dialog').close();$('#dialog').innerHTML='';}
 function planDialog() {
@@ -511,6 +611,8 @@ async function privacyDialog() {
 }
 document.addEventListener('click',event=>{
   const target=event.target.closest('button, [data-action]');if(!target||S.busy)return;
+  rememberPage();
+  if(target.dataset.step!==undefined){const step=Number(target.dataset.step);if(S.view==='wizard'&&step>=0&&step<S.step&&S.step<4){collect();S.step=step;S.preview=null;render();window.scrollTo(0,0);}return;}
   if(target.dataset.group){collect();const t=target.dataset.group;S.open.has(t)?S.open.delete(t):S.open.add(t);render();return;}
   if(target.dataset.feel)return startVisit(target.dataset.feel);
   if(target.dataset.planNeed){readPlans();const k=target.dataset.planNeed;if(S.plans.needs[k])delete S.plans.needs[k];else S.plans.needs[k]=1;renderPlans();return;}
@@ -519,7 +621,7 @@ document.addEventListener('click',event=>{
   if(target.dataset.pins){readDraft();S.draft.insurance=target.dataset.pins;renderProfile();return;}
   if(target.dataset.addRow){const visit=S.view==='visit';visit?readVisit():readDraft();const tgt=visit?S.visit:S.draft;(target.dataset.addRow==='med'?tgt.meds:tgt.fus).push(target.dataset.addRow==='med'?{name:'',refill_by:''}:{what:'',due:''});visit?renderVisit():renderProfile();return;}
   if(target.dataset.todo){const t=S.health.todos.find(x=>x.id===target.dataset.todo);return work(async()=>{S.health=await api('/api/profile/todo',{id:t.id,done:!t.done_on});render();});}
-  if(target.dataset.forget){const f=target.dataset.forget;if(f==='everything'&&!confirm('Forget your whole profile and all saved care journeys? This can’t be undone.'))return;return work(async()=>{S.health=await api('/api/profile/forget',{field:f,value:target.dataset.value||''});S.state=await api('/api/state');if(f==='everything'){editProfile();return;}render();});}
+  if(target.dataset.forget){const f=target.dataset.forget;if(f==='everything'&&!confirm('Forget your whole profile and all saved care journeys? This can’t be undone.'))return;return work(async()=>{S.health=await api('/api/profile/forget',{field:f,value:target.dataset.value||''});trail.clear();S.state=await api('/api/state');if(f==='everything'){editProfile();return;}render();});}
   if(target.dataset.sign){S.input.no_signs=false;const id=target.dataset.sign;S.input.checks=S.input.checks.includes(id)?S.input.checks.filter(x=>x!==id):[...S.input.checks.filter(x=>S.choices.some(c=>c.id===x&&lvl(c)==='emergency')),id];
     return work(async()=>{S.safety=await api('/api/safety',{checks:S.input.checks});render();$('#safety-result')?.scrollIntoView({behavior:'smooth',block:'center'});});}
   if(target.dataset.none){S.input.no_signs=!S.input.no_signs;if(S.input.no_signs){S.input.checks=S.input.checks.filter(x=>!S.choices.some(c=>c.id===x&&lvl(c)==='emergency'));S.safety=null;}render();return;}
@@ -534,19 +636,26 @@ document.addEventListener('click',event=>{
   if(target.dataset.prepare)return preparationDialog(target.dataset.prepare);
   if(target.dataset.case)return work(async()=>{S.current=await api('/api/case?id='+encodeURIComponent(target.dataset.case));S.step=4;S.view='wizard';S.expect=null;closeDialog();render();});
   const action=target.dataset.action;
+  if(action==='page-back'){
+    if(trail.canGoBack){history.back();return;}
+    if(S.view==='wizard'&&S.step>0&&S.step<4){collect();S.step--;S.preview=null;render();return;}
+    S.view='home';S.expect=null;S.current=null;return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});
+  }
+  if(action==='edit-preferences')return preferencesDialog();
+
   if(action==='close')return closeDialog();
   if(action==='back'){collect();S.step--;S.preview=null;render();return;}
-  if((action==='home'||action==='new')&&S.state.unlocked){S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.current=null;S.preview=null;S.view='home';return work(async()=>{S.health=await api('/api/profile');render();window.scrollTo(0,0);});}
+  if((action==='home'||action==='new')&&S.state.unlocked){S.input=fresh();S.safety=null;S.expect=null;S.found=null;S.current=null;S.preview=null;S.view='home';return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
   if(action==='home'||action==='new'){S.input=fresh();S.input.visit_date=S.state.today||today();S.safety=null;S.expect=null;S.found=null;S.sub='symptoms';S.step=0;S.current=null;S.preview=null;render();return;}
-  if(action==='home-page'){if(!S.state.unlocked){S.view='gate';render();return;}S.view='home';S.expect=null;S.current=null;return work(async()=>{S.health=await api('/api/profile');render();window.scrollTo(0,0);});}
+  if(action==='home-page'){if(!S.state.unlocked){S.view='gate';render();return;}S.view='home';S.expect=null;S.current=null;return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
   if(action==='edit-profile')return editProfile();
   if(action==='plans')return work(openPlans);
   if(action==='sbc-paste'){const t=$('#sbc-text')?.value||'';if(t.trim().length<200)return toast('Paste the whole SBC text.');return sendSbc({text:t,file_name:'pasted text'});}
   if(action==='add-plan'){readPlans();S.plans.plans.push({name:'',premium:'',oop_max:'',costs:{}});renderPlans();return;}
   if(action==='record-visit'){if(S.view==='home')S.current=null;return work(async()=>{if(!S.health)S.health=await api('/api/profile');recordVisit();});}
   if(action==='back-to-results'){S.visit=null;S.view='wizard';render();return;}
-  if(action==='start-over'){if(!confirm('Erase the saved health profile on this computer and start a new one? This can’t be undone.'))return;return work(async()=>{S.state=await api('/api/vault/reset',{confirm:'erase'});S.health=null;S.state.profile_ready=false;editProfile();});}
-  if(action==='known'){S.view='known';return work(async()=>{S.health=await api('/api/profile');render();window.scrollTo(0,0);});}
+  if(action==='start-over'){if(!confirm('Erase the saved health profile on this computer and start a new one? This can’t be undone.'))return;return work(async()=>{S.state=await api('/api/vault/reset',{confirm:'erase'});trail.clear();S.health=null;S.state.profile_ready=false;editProfile();});}
+  if(action==='known'){S.view='known';return work(async()=>{[S.health,S.state]=await Promise.all([api('/api/profile'),api('/api/state')]);render();window.scrollTo(0,0);});}
   if(action==='care-today'){collect();S.input.service='same_day';return advance();}
   if(action==='see-places'){S.view='wizard';S.current=S.found;S.found=null;S.expect=null;S.step=4;render();window.scrollTo(0,0);return;}
   if(action==='health'){collect();S.step=0;S.sub='symptoms';S.safety=null;S.preview=null;render();window.scrollTo(0,0);return;}
@@ -565,6 +674,7 @@ document.addEventListener('click',event=>{
     collect();if(!navigator.geolocation)return toast('Device location is unavailable. Enter your city instead.');
     navigator.geolocation.getCurrentPosition(position=>{S.input.lat=position.coords.latitude;S.input.lon=position.coords.longitude;render();toast('Coordinates stay on this device. Confirm your city before continuing.');},()=>toast('Location was unavailable or declined. You can continue with city and state.'),{timeout:10000,maximumAge:60000});return;
   }
+  if(action==='agent')return work(async()=>{const status=await api('/api/agent/status');agentDialog(status);});
   if(action==='add-candidate')return candidateDialog();
   if(action==='plan')return planDialog();
   if(action==='contact')return contactDialog();

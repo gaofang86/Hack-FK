@@ -5,6 +5,8 @@ deterministically; the model only explains them, or translates a call script, in
 your language. Every output says whether it came from the local model or a built-in
 template (English, Chinese and Spanish templates are bundled for offline use).
 """
+import json
+
 from .egress import EgressBlocked, EgressError
 
 
@@ -85,6 +87,16 @@ class LocalModel:
             "options": {"temperature": 0.2, "num_predict": max_tokens},
         })
         return (res.get("response") or "").strip()
+
+    def structured(self, message, schema, system, *, context=None):
+        """Bounded local extraction; callers must validate meaning and execute tools themselves."""
+        res = self.egress.local("POST", f"{self.cfg.ollama_url}/api/chat", json_body={
+            "model": self.cfg.ollama_model, "stream": False, "format": schema,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": json.dumps({"user_text": message, "task_scope": context or {}}, ensure_ascii=False)}],
+            "options": {"temperature": 0, "num_predict": 700},
+        }, timeout=60)
+        return json.loads(res["message"]["content"])
 
     def _try(self, prompt, system, fallback, max_tokens=400):
         if self.status()["available"]:

@@ -97,3 +97,12 @@
 | Tavily／Exa 搜索 API | 在应用内发现公开诊所线索 | 配置至少一个服务的 API key（本机 `.env`，不入库）；以 NEU／02445 的公开查询验证真实结果、披露预览、账本、失败和离线处理 | 官方来源本地目录、外部查询入口、手动添加候选 |
 
 API key 是搜索服务凭证，不是用户保险信息。搜索只发现公开线索，不确认诊断、价格、具体保险网络或预约。
+
+### Local text-agent implementation update (2026-11-08)
+
+The first text stage is implemented: deterministic task/cost reads, local structured
+Ollama routing, quoted office-reply proposals, explicit review, and saved-fact ranking
+updates. Real synthetic-model evidence is recorded in `verification/agent-local.json`.
+This updates the prior Ollama deferral only for this bounded text-agent path; it does
+not close microphone/transcription/playback, all preparation-language checks, or real
+search/provider/insurance acceptance. See README for setup and STATUS for scope.

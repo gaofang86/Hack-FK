@@ -44,6 +44,10 @@ def clean_plan(raw):
         raise ValueError("Coverage end must follow its start")
     for key in ("premium", "copay", "deductible_remaining", "oop_remaining"):
         out[key] = number(raw.get(key), key.replace("_", " "))
+    product = raw.get("zocdoc_product", "")
+    if product not in ("", "bcbsma_blue_care_elect_ppo"):
+        raise ValueError("Choose a supported Zocdoc product or leave it unselected")
+    out["zocdoc_product"] = product
     out["coinsurance"] = number(raw.get("coinsurance"), "Coinsurance", 100)
     return out
 

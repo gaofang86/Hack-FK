@@ -9,7 +9,7 @@ from app.server import App
 from app.sources import ZocdocLink, describe_all
 from tests.test_person_first import health_first
 
-NEU = {"name": "Northeastern University Student Health Plan - Blue Care Elect PPO", "rule": "copay"}
+NEU = {"name": "Northeastern University Student Health Plan - Blue Care Elect PPO", "rule": "copay", "zocdoc_product": "bcbsma_blue_care_elect_ppo"}
 
 
 def q(person):
@@ -25,6 +25,19 @@ class LinkTests(unittest.TestCase):
         self.assertEqual((p["insurance_carrier"], p["insurance_plan"]), ("573", "31215"))
         self.assertEqual(p["address"], "02115")
         self.assertTrue(d["in_network_filter"])
+
+    def test_name_alone_never_selects_product(self):
+        for name in (NEU["name"], "Not Blue Care Elect", "Other State Blue Care Elect PPO"):
+            d, params = q({"insurance": "yes", "plan": {"name": name}})
+            self.assertFalse(d["in_network_filter"])
+            self.assertEqual(params["insurance_plan"], "-1")
+
+    def test_explicit_product_survives_plan_validation(self):
+        from app.benefits import clean_plan
+        plan = clean_plan(NEU)
+        self.assertTrue(q({"insurance": "yes", "plan": plan})[0]["in_network_filter"])
+        with self.assertRaises(ValueError):
+            clean_plan(dict(NEU, zocdoc_product="invented"))
 
     def test_visit_kinds(self):
         self.assertEqual(q({"service": "primary_care", "need": "checkup", "zip": "02115"})[1]["reason_visit"], "76")

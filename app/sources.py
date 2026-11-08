@@ -21,9 +21,9 @@ VISITS = {
     "urgent": ("513", "1542", "Urgent care · Urgent care consultation"),
 }
 
-# Plans whose Zocdoc carrier/plan IDs were confirmed. Matched on the plan name the user saved.
+# Explicit user-selected products only. Never infer an exact product from a plan name.
 PLANS = [
-    {"match": ["blue care elect"], "carrier": "573", "plan": "31215",
+    {"id": "bcbsma_blue_care_elect_ppo", "carrier": "573", "plan": "31215",
      "label": "Blue Cross Blue Shield of Massachusetts · Blue Care Elect (PPO)"},
 ]
 
@@ -41,8 +41,8 @@ def visit_kind(person):
 def zocdoc_plan(person):
     if person.get("insurance") != "yes" or not person.get("plan"):
         return None
-    name = person["plan"].get("name", "").lower()
-    return next((p for p in PLANS if any(m in name for m in p["match"])), None)
+    product = person["plan"].get("zocdoc_product", "")
+    return next((p for p in PLANS if p["id"] == product), None)
 
 
 class ZocdocLink:
@@ -59,9 +59,9 @@ class ZocdocLink:
         shares = [f"Location: {where}", f"Kind of visit: {meaning}"]
         if plan:
             shares.append(f"Insurance: {plan['label']}")
-            note = "Shows providers Zocdoc lists as in-network for your plan."
+            note = "Filters by the exact product you selected. This is not confirmation of clinician participation; verify your plan, clinician, location and service."
         elif person.get("insurance") == "yes":
-            note = "We don’t have Zocdoc’s ID for your plan yet. Pick your plan on Zocdoc to see in-network providers."
+            note = "No exact product was selected here. Pick your exact plan on Zocdoc; a typed plan name never activates an insurance filter."
         else:
             note = "No insurance filter. Ask each office for its self-pay price."
         return {"source": self.name, "kind": self.kind, "url": f"{BASE}?{urlencode(params)}", "shares": shares,

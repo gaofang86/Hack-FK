@@ -123,22 +123,32 @@ def ranked(case):
         supported = person["service"] in provider.get("services", [])
         price = chosen["amount"]
         over_budget = person.get("budget") is not None and price is not None and price > person["budget"]
-        language_match = person["language"].casefold() in [v.casefold() for v in provider.get("languages", [])]
+        from .workflow import current_answers
+        answers = current_answers(provider, person)
+        language_answer = answers.get("language")
+        if language_answer is not None:
+            # A scoped reply supersedes the directory, including an expired/unknown reply.
+            language_match = not language_answer["stale"] and language_answer["result"] == "yes"
+        else:
+            language_match = person["language"].casefold() in [v.casefold() for v in provider.get("languages", [])]
         miles = distance(person, provider)
         rating = provider.get("rating")
         reasons = ["Requested service listed" if supported else "Confirm that this location offers your requested service"]
         if language_match:
-            reasons.append(f"{person['language']} listed")
+            reasons.append(f"{person['language']} support: user-recorded office reply ({language_answer['checked_on']})" if language_answer else f"{person['language']} listed")
+        elif language_answer and not language_answer["stale"] and language_answer["result"] == "no":
+            reasons.append(f"Office reported no {person['language']} language/interpreter support ({language_answer['checked_on']})")
         elif person["language"] != "English":
             reasons.append("Ask about language or interpreter support")
         if price is not None:
             reasons.append("Above your visit budget" if over_budget else "Within your visit budget" if person.get("budget") is not None else "A scoped price is available")
         if person["insurance"] == "yes" and pathway == "Self-pay":
             reasons.append("Compare cash with your plan; cash payments may not count toward your deductible")
-        if not provider.get("demo"):
+        availability = answers.get("availability", {})
+        if not provider.get("demo") and (not availability or availability["stale"] or availability["result"] == "unknown"):
             reasons.append("New-patient acceptance and appointment availability need confirmation")
-        from .workflow import current_answers
-        answers = current_answers(provider, person)
+        elif availability and not availability["stale"] and availability["result"] == "yes":
+            reasons.append(f"Office availability reply recorded {availability['checked_on']}; this is not a booking")
         unavailable = bool(answers.get("availability", {}).get("result") == "no" and not answers["availability"]["stale"])
         if unavailable:
             reasons.append("Office reported no suitable new-patient appointment; keep this as a backup, not an actionable choice")

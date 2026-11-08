@@ -79,3 +79,12 @@ Both integrations remain future work. Complete the independent product workflow 
 | Tavily / Exa search API | Discover public provider leads inside the app | Configure at least one API key in local `.env`, never version control; verify real NEU / 02445 results, disclosure preview, ledger, failures and offline handling | Sourced local directory, external lookup links and manual candidate entry |
 
 An API key authenticates a search service; it is not member insurance information. Search discovers leads, not verified diagnoses, prices, exact-plan participation or appointments.
+
+### Local text-agent implementation update (2026-11-08)
+
+The first text stage is implemented: deterministic task/cost reads, local structured
+Ollama routing, quoted office-reply proposals, explicit review, and saved-fact ranking
+updates. Real synthetic-model evidence is recorded in `verification/agent-local.json`.
+This updates the prior Ollama deferral only for this bounded text-agent path; it does
+not close microphone/transcription/playback, all preparation-language checks, or real
+search/provider/insurance acceptance. See README for setup and STATUS for scope.

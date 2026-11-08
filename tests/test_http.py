@@ -24,6 +24,10 @@ class Fake(BaseHTTPRequestHandler):
         self.seen.append((self.path,body))
         payload={"response":"LOCAL TEST DRAFT: Confirm the visit and ask about the full price."} if self.path=="/api/generate" else {
             "results":[{"url":"https://example.org/clinic","title":"Test source clinic","content":"Primary care in Boston. Call (617) 555-0100."}]}
+        if self.path == "/api/chat":
+            payload = {"message": {"content": json.dumps({"action": "propose_reply", "replies": [
+                {"key": "language", "result": "yes", "evidence": "有中文翻译"},
+                {"key": "availability", "result": "no", "evidence": "目前不收新病人"}]}, ensure_ascii=False)}}
         self.send_response(200);self.send_header("Content-Type","application/json");self.end_headers();self.wfile.write(json.dumps(payload).encode())
 
 
@@ -48,6 +52,30 @@ class HttpTests(unittest.TestCase):
         req=Request(cls.base+path,data=json.dumps(body).encode() if body is not None else None,
                     headers=headers if headers is not None else {"X-FirstVisit":"local","Content-Type":"application/json"})
         with urlopen(req,timeout=10) as response:return json.load(response)
+
+    def test_agent_review_over_http_uses_local_schema_and_rejects_replay(self):
+        from datetime import date
+        p = person(); p["demo"] = False
+        preview = self.request("/api/preview", p)
+        case = self.request("/api/search", dict(token=preview["token"], approved=True, live=False))
+        provider = case["providers"][0]
+        draft = self.request("/api/agent/turn", dict(id=case["id"], provider_id=provider["id"],
+                             message="这家诊所有中文翻译，但目前不收新病人。"))
+        self.assertEqual(draft["state"], "proposal")
+        self.assertFalse(self.app.get_case(case["id"])["providers"][0].get("answers"))
+        body = dict(id=case["id"], token=draft["token"], confirmed=True,
+                    results={"language": "yes", "availability": "no"},
+                    source="Synthetic HTTP test office", checked_on=date.today().isoformat())
+        saved = self.request("/api/agent/confirm", body)
+        self.assertEqual(saved["saved"], 2)
+        self.assertTrue(saved["case"]["results"][-1]["unavailable"])
+        self.assertEqual(saved["case"]["results"][-1]["provider"]["id"], provider["id"])
+        with self.assertRaises(HTTPError) as caught:
+            self.request("/api/agent/confirm", body)
+        self.assertEqual(caught.exception.code, 400)
+        chats = [b for path, b in Fake.seen if path == "/api/chat"]
+        self.assertTrue(chats[-1]["format"])
+        self.assertNotIn(p["history"], json.dumps(chats[-1]))
 
     def test_cross_origin_and_rebinding_refused(self):
         for headers in ({},{"X-FirstVisit":"local","Origin":"https://attacker.example"},{"X-FirstVisit":"local","Host":"attacker.example"}):
@@ -77,6 +105,9 @@ class HttpTests(unittest.TestCase):
         with urlopen(self.base) as response:
             self.assertIn("frame-ancestors 'none'",response.headers["Content-Security-Policy"])
             self.assertEqual(response.headers["Cache-Control"],"no-store")
+        with urlopen(self.base + "/navigation.js") as response:
+            self.assertIn("javascript", response.headers["Content-Type"])
+            self.assertIn("class NavigationTrail", response.read().decode())
         with self.assertRaises(HTTPError) as caught:urlopen(self.base+"/../app/config.py")
         self.assertEqual(caught.exception.code,404)
 

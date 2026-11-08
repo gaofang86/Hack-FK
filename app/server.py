@@ -9,6 +9,7 @@ import threading
 import time
 from urllib.parse import parse_qs, urlparse
 
+from .agent import CareAgent
 from .benefits import clean_plan, number
 from .catalog import candidates
 from .config import Config, ROOT
@@ -37,6 +38,7 @@ class App:
         self.egress = Egress(self.store, self.cfg)
         self.places = Places(self.egress, self.cfg)
         self.model = LocalModel(self.egress, self.cfg)
+        self.agent = CareAgent(self.model)
         self.mutex = threading.RLock()
         self.previews = {}
 
@@ -67,6 +69,7 @@ class App:
             if (self.store.unlocked and not getattr(self, "preview_mode", False)
                     and time.time() - self.store.last_activity > self.cfg.idle_lock_minutes * 60):
                 self.store.lock_vault()
+                self.agent.clear()
             if path == "/api/state" and method == "GET":
                 return self.state()
             if path in ("/api/vault/create", "/api/vault/unlock") and method == "POST":
@@ -87,12 +90,14 @@ class App:
                 if body.get("confirm") != "erase":
                     raise ValueError("Confirm that you want to erase the saved profile")
                 self.previews.clear()
+                self.agent.clear()
                 self.store.wipe()
                 return self.state()
             self.store.require()
             self.store.touch()
             if path == "/api/vault/lock" and method == "POST":
                 self.previews.clear()
+                self.agent.clear()
                 self.store.lock_vault()
                 return self.state()
             if path == "/api/profile" and method == "GET":
@@ -165,6 +170,7 @@ class App:
                 self.store.save()
                 return health_view(self.store.data["profile"])
             if path == "/api/profile/forget" and method == "POST":
+                self.agent.clear()
                 profile, field, value = self.store.data["profile"], body.get("field"), text(body.get("value"), 200)
                 if field in ("conditions", "allergies", "medications"):
                     profile[field] = [v for v in profile.get(field, []) if v != value]
@@ -254,6 +260,15 @@ class App:
                 case["input"] = clean_input(updated)
                 self.store.save()
                 return self.shown(case)
+            if path == "/api/agent/status" and method == "GET":
+                return self.model.status()
+            if path == "/api/agent/turn" and method == "POST":
+                return self.agent.turn(self.get_case(body.get("id")), body)
+            if path == "/api/agent/confirm" and method == "POST":
+                case = self.get_case(body.get("id"))
+                result = self.agent.confirm(case, body)
+                self.store.save()
+                return dict(result, case=self.shown(case))
             if path == "/api/case/candidate" and method == "POST":
                 case = self.get_case(body.get("id"))
                 if case["input"]["demo"]:
@@ -383,7 +398,7 @@ def make_handler(app):
                     return self.send(500, {"error": "The local operation failed. Your saved information is still in the vault."})
             if self.command != "GET":
                 return self.send(405, {"error": "Method not allowed"})
-            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/styles.css": "styles.css"}
+            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/navigation.js": "navigation.js", "/styles.css": "styles.css"}
             file = assets.get(parsed.path)
             if not file:
                 return self.send(404, {"error": "Not found"})
@@ -408,6 +423,7 @@ def serve(app=None, block=True):
                 if app.store.unlocked and time.time() - app.store.last_activity > app.cfg.idle_lock_minutes * 60:
                     app.store.lock_vault()
                     app.previews.clear()
+                    app.agent.clear()
 
     threading.Thread(target=idle, daemon=True).start()
     if not block:

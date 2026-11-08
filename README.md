@@ -79,7 +79,7 @@ Computed with fixed rules on your device, with no model and no network. It shows
 | **B. No insurance** | Check you're not already enrolled by your school; cheapest options first; [community health centers](https://findahealthcenter.hrsa.gov/), [free clinics](https://nafcclinics.org/find-clinic/), [hospital financial assistance](https://www.irs.gov/charities-non-profits/financial-assistance-policies-faps), [Good Faith Estimates](https://www.cms.gov/newsroom/fact-sheets/no-surprises-understand-your-rights-against-surprise-medical-bills); scripts for asking about price and help |
 | **C. Choosing a plan** | Everything in B, plus **Compare plans**: pick the care you expect this year (pre-filled from your profile), enter up to three plans, and get a yearly total = premiums + care, capped at the out-of-pocket maximum. A plan with unknown or uncovered care is never ranked. |
 
-**Real in-network providers (Zocdoc).** `app/sources.py` turns your situation into a prefilled Zocdoc results link: kind of care (urgent care, primary care illness, annual physical, follow-up), your ZIP, and, if your saved plan matches one we have IDs for, your exact plan. Today that's Blue Cross Blue Shield of Massachusetts · Blue Care Elect (PPO), Northeastern's student plan. It opens in your own browser, so FirstVisit sends nothing; the card lists exactly what Zocdoc will see. The IDs were read from zocdoc.com result URLs on 2026-11-07. They're not a documented API and may change. Sources share one `describe()` shape, so a Zocdoc API source can replace the link once partner credentials arrive (requested 2026-11-07, not yet granted).
+**External provider lookup (Zocdoc).** `app/sources.py` turns your situation into a prefilled Zocdoc results link: kind of care (urgent care, primary care illness, annual physical, follow-up), your ZIP, and, only if you explicitly select a supported exact product in the plan form, that insurance filter. A typed plan name never selects a product. The currently supported filter is Blue Cross Blue Shield of Massachusetts · Blue Care Elect (PPO). This does not establish that it is your current NUSHP product or that any clinician participates. It opens in your own browser, so FirstVisit sends nothing; the card lists exactly what Zocdoc will see. The IDs were read from zocdoc.com result URLs on 2026-11-07. They're not a documented API and may change. Sources share one `describe()` shape, so a Zocdoc API source can replace the link once partner credentials arrive (requested 2026-11-07, not yet granted).
 
 Below that is the shortlist: personal cost, language, rating and distance, each labeled with its source. Unknown stays unknown, never $0. You can add a confirmed quote, prepare a call script (template, or a local Ollama draft), and track the appointment.
 
@@ -157,7 +157,7 @@ Open http://127.0.0.1:8767. This creates a disposable fictional profile and a re
 
 Prepared materials: [demo script](docs/DEMO_SCRIPT.md), [submission draft](docs/DEVPOST_DRAFT.md), [user-test protocol](docs/USER_VALIDATION.md), [release checklist](docs/RELEASE_CHECKLIST.md). Interviews, recording, publication and submission are not claimed as completed.
 
-Ollama and real Tavily/Exa API acceptance are explicitly deferred in PLAN.md section 9. Template preparation, local directory and manual candidate workflows remain available.
+Real Tavily/Exa API acceptance remains deferred in PLAN.md section 9. The optional local agent has a separate reproducible acceptance check below. Template preparation, local directory and manual candidate workflows remain available.
 
 ## Tests
 
@@ -165,9 +165,11 @@ Ollama and real Tavily/Exa API acceptance are explicitly deferred in PLAN.md sec
 python3 -m unittest discover -v
 python3 scripts/audit_egress.py
 node --check static/app.js
+node --check static/navigation.js
+node --test tests/test_navigation_ui.cjs tests/test_personalized_ui.cjs
 ```
 
-There are 88 tests. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
+The automated suite covers the local agent in addition to the workflows below. They cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
 
 
 Reproducible acceptance checks (use only synthetic data):
@@ -178,3 +180,61 @@ python3 scripts/verify_install.py
 ```
 
 The first observes a separate test app process using a controlled loopback receiver. The second downloads requirements into a fresh temporary virtual environment and runs tests, the import audit, JS syntax and receiver checks. Reports are under `verification/`; neither validates real API keys, exact physician participation or production network isolation.
+
+## Local care-task assistant (text first)
+
+On a saved journey's results page, choose **本地助手 / Local assistant**.
+**View task** and **View costs** read deterministic saved evidence and work without
+Ollama, including with the app's offline switch on. To interpret Chinese or English
+text locally, start Ollama and install the configured model:
+
+```sh
+ollama serve
+# In a second terminal:
+ollama pull qwen2.5:3b
+```
+
+Select the exact clinic and enter an office reply, such as
+“这家诊所有中文翻译，但目前不收新病人。” The local model proposes separate language
+and availability facts. Review each quoted span and result, omit unwanted facts,
+and supply the actual contact/source and date before **Confirm and save**.
+No facts are written during extraction. Model output must pass an allowlist and
+verbatim-evidence checks; a question cannot be saved as an office confirmation.
+The model can still misunderstand meaning, so review is required. Invalid output
+never silently becomes a confirmed fact; the manual office-reply form stays available.
+
+Confirmed language answers update fit ordering and reasons; a negative availability
+answer retains the clinic as a backup. Unknown or expired answers do not confirm
+support. Prices, plan participation and bookings cannot be written by this agent.
+Drafts expire after ten minutes, are superseded by the next turn for that journey,
+and are invalidated by task changes. Locking or forgetting clears in-memory drafts.
+Conversation text is not saved; only reviewed evidence spans become encrypted office
+records. There is no cloud fallback. This is a bounded, single-turn tool router,
+not an autonomous medical advisor. Microphone, transcription and speech playback
+are not implemented in this first stage.
+
+```sh
+python3 scripts/verify_agent.py
+```
+
+This opt-in check uses the real configured local model, synthetic Chinese text, a
+disposable vault and the app's offline switch. Results go to
+`verification/agent-local.json`. It does not verify microphone input, browser layout,
+OS-wide isolation, actual clinic contacts or real insurance participation.
+
+## Navigation and preferences
+
+- A visible Back control and My health home link appear on task and secondary pages,
+  including narrow screens. Completed intake steps can be reopened directly.
+- Browser Back/Forward restores in-tab drafts. Private entries remain in memory;
+  browser history contains only opaque navigation IDs, never health values or
+  passwords. Locking or forgetting clears the navigation snapshots. A page reload
+  does not recover unsaved drafts; saved journeys remain in the vault.
+- Results lead with the current care need, care language, budget, payment path and
+  sorting basis, then a concrete next action. **Edit preferences** updates the saved
+  task and immediately reorders its existing candidates without a public search.
+- Generic insurance guidance and example scenarios are available behind details,
+  rather than preceding the user's own task. Home continuation refreshes saved next
+  actions after office replies or preferences change.
+- Navigation state has Node regression coverage; a browser visual pass still needs
+  Computer Use permission and is not claimed by these unit checks.
