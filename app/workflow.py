@@ -5,7 +5,7 @@ import secrets
 from .navigation import safe_url, text
 
 ANSWER_KEYS = {
-    'availability': 'Accepting new patients / appointment availability',
+    'availability': 'Appointment availability (new or returning patient)',
     'language': 'Language / interpreter support',
     'referral': 'Referral / prior authorization',
     'referral_action': 'Required referral / authorization obtained',

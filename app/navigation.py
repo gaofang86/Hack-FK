@@ -146,12 +146,14 @@ def ranked(case):
             reasons.append("Compare cash with your plan; cash payments may not count toward your deductible")
         availability = answers.get("availability", {})
         if not provider.get("demo") and (not availability or availability["stale"] or availability["result"] == "unknown"):
-            reasons.append("New-patient acceptance and appointment availability need confirmation")
+            reasons.append("Appointment availability needs confirmation" if person["service"] == "follow_up"
+                           else "New-patient acceptance and appointment availability need confirmation")
         elif availability and not availability["stale"] and availability["result"] == "yes":
             reasons.append(f"Office availability reply recorded {availability['checked_on']}; this is not a booking")
         unavailable = bool(answers.get("availability", {}).get("result") == "no" and not answers["availability"]["stale"])
         if unavailable:
-            reasons.append("Office reported no suitable new-patient appointment; keep this as a backup, not an actionable choice")
+            reasons.append("Office reported no suitable " + ("" if person["service"] == "follow_up" else "new-patient ")
+                           + "appointment; keep this as a backup, not an actionable choice")
         rows.append(dict(answers=answers, unavailable=unavailable, provider=provider, cash=cash, insured=insured, cost=chosen, pathway=pathway,
                          supported=supported, miles=miles, language_match=language_match, over_budget=over_budget,
                          reasons=reasons, confirmation=confirmation_tasks(person, provider, cash, insured), comparison=comparison(provider, person.get("plan"), person["visit_date"], person["service"], person["months"])))
