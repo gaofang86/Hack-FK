@@ -120,3 +120,4 @@ html[data-ui-locale="en"] .home-composer h1{font-size:44px;line-height:1.15;max-
 .coverage-step{margin:0 0 18px}.coverage-step.needs-answer{border-color:var(--teal);box-shadow:0 0 0 2px var(--pale)}.coverage-step h2{font-size:24px;margin:6px 0}
 .kind-guess{margin:8px 0 0;font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.kind-guess strong{color:var(--teal)}
 .booking-link{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--teal);margin-left:14px;margin-top:6px}
+.ref-copay{display:block;margin-top:6px;font-style:italic;opacity:.8}

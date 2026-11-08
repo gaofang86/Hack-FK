@@ -14,6 +14,8 @@ NUSHP = {
     'network_guidance': 'NEU links to the insurer directory and says to select PPO or EPO. Confirm your exact product using your current ID card or MyBlue account.',
     'benefit_status': 'Current-year cost sharing not verified: the official page lists 2026–27 dates, but its Summary of Benefits and SBC links still open 2025–26 documents. They are not used for current estimates.',
     'published_highlights': 'The undated NEU highlights page lists $20 for a Fenway medical office visit versus $25 at other in-network providers. Treat these as leads to confirm for 2026–27, not a quote or verified current-year copay.',
+    # Prior-year/undated published copays: shown as a labeled reference only, never used in cost arithmetic.
+    'reference_copays': {'fenway': 20, 'default_in_network': 25, 'label': 'NEU published highlights (2025–26 / undated)'},
     'member_status': 'Your enrollment, exact coverage dates, remaining balances and clinician-level network still require confirmation.',
     'network_status': 'Neither Brookline candidate has been confirmed in-network. Check the exact clinician, address and service with both the insurer and the office.',
     'steps': [
