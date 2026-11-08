@@ -90,3 +90,38 @@ language, budget and priority can be changed in place; home next actions refresh
 from the saved task. Nine Node checks cover back/forward drafts, rerenders, isolation, clearing, expired
 IDs, actual preference rendering and candidate-specific next actions. Browser visual verification remains
 unavailable without Computer Use permission; unsaved drafts do not survive reload.
+
+## Unified intake and browser dictation
+
+First visit, current concern, report preparation and follow-through share the existing
+case store. A new task can start before a full profile; reports are optional. Search
+adds intake/providers to the same task ID and retains its goal/report links. Local lab
+PDF preview requires explicit per-row review before encrypted persistence. No report
+flag generates a medical order or diagnosis. Personal notes are separate from the
+booking script; deleting a report removes derived preparation. Controlled acceptance
+using the explicitly supplied report is in `verification/report-journey.json`; the
+report contains counts and boolean checks, not source values or file paths.
+
+The homepage has optional Web Speech API dictation, no audio backend. On-device mode
+checks API/local-language availability and does not fall back to a service. Browser
+service requires explicit disclosure consent about audio content, uncontrolled vendor
+retention/use/deletion and traffic outside our ledger. It never auto-submits text.
+Details and official sources: `docs/VOICE_PRIVACY.md`. Fake-browser checks cover API
+lifecycle and consent; real microphone, permission dialogs and visual acceptance
+remain unverified because Computer Use permissions are not granted in this session.
+
+Latest unified-intake validation: 112 Python tests and 21 Node UI/lifecycle checks,
+JavaScript syntax, static import audit and the controlled privacy receiver are included
+in the fresh-install workflow. The browser dictation checks use fakes; no real
+microphone or vendor retention verification is claimed.
+
+## Interface language update
+
+The header now has an EN / 中文 toggle with English as the default. Homepage copy
+uses one selected language, with a larger English headline and a smaller Chinese
+type scale. Long dictation privacy copy sits behind a disclosure. Locale changes
+update interface text in place and preserve inputs. Only the interface preference
+is stored in localStorage; care language and dictation language are independent.
+Protected clinical/source text, user drafts, values and provider names are not
+automatically translated. Five locale checks cover both modes, typography copy,
+source preservation, reversible in-place changes and preference-only storage.

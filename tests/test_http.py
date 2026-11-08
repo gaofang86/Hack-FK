@@ -78,6 +78,20 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(chats[-1]["format"])
         self.assertNotIn(p["history"], json.dumps(chats[-1]))
 
+    def test_shared_journey_and_report_over_http(self):
+        from tests.test_journeys_reports import synthetic_pdf
+        j=self.request('/api/journeys',dict(kind='first_visit',goal='Synthetic first visit goal'))
+        self.assertEqual(j['reports'],[])
+        preview=self.request('/api/reports/preview',dict(journey_id=j['id'],pdf_base64=synthetic_pdf()))
+        saved=self.request('/api/reports/confirm',dict(token=preview['token'],confirmed=True,rows=preview['rows']))
+        self.assertEqual(saved['id'],j['id'])
+        self.assertEqual(len(saved['reports']),1)
+        self.assertIn('12.34 mg/dL',self.request('/api/journey?id='+j['id'])['personal_preparation'])
+        with urlopen(self.base+'/dictation.js') as response:
+            self.assertIn('class Dictation',response.read().decode())
+        with urlopen(self.base+'/i18n.js') as response:
+            self.assertIn('interfaceText',response.read().decode())
+
     def test_cross_origin_and_rebinding_refused(self):
         for headers in ({},{"X-FirstVisit":"local","Origin":"https://attacker.example"},{"X-FirstVisit":"local","Host":"attacker.example"}):
             with self.subTest(headers=headers),self.assertRaises(HTTPError) as caught:self.request("/api/state",headers=headers)

@@ -116,7 +116,7 @@ def protected_values(data):
     for f in profile.get("follow_ups", []) or []:
         add("follow_ups", f.get("what"), _pattern_matcher(tu.phrase_pattern(f.get("what", ""))))
     for case in data.get("cases", {}).values():
-        for phrase in symptom_phrases(case.get("description", "")):
+        for phrase in symptom_phrases(case.get("description", "") + "; " + case.get("goal", "")):
             add("symptoms", phrase, _pattern_matcher(tu.phrase_pattern(phrase)))
         for phrase in symptom_phrases((case.get("contact") or {}).get("notes", "")):
             add("contact_notes", phrase, _pattern_matcher(tu.phrase_pattern(phrase)))
@@ -126,6 +126,11 @@ def protected_values(data):
                     add("confirmation_answers", phrase, _pattern_matcher(tu.phrase_pattern(phrase)))
         for label in case.get("symptom_terms", []):
             add("symptoms", label, _pattern_matcher(tu.phrase_pattern(label)))
+    for report in data.get('reports', {}).values():
+        for row in report.get('rows', []):
+            for key in ('result', 'evidence'):
+                value = row.get(key, '')
+                add('report_values', value, _pattern_matcher(tu.phrase_pattern(value)))
     for bill in data.get("bills", {}).values():
         for num in bill.get("identifiers", []):
             add("bill_numbers", num, _id_matcher(num))

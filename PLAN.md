@@ -112,3 +112,17 @@ Merge compatibility: call-script translation uses `OLLAMA_MODEL` (default
 `qwen3.5:2b`); structured office-reply extraction uses `OLLAMA_AGENT_MODEL` (default
 `qwen2.5:3b`). The local qwen3.5 runtime refused JSON-schema output during merge
 acceptance. Both routes remain local and their configuration is independent.
+
+### Unified intake extension
+
+A report is optional evidence in the shared care-task lifecycle, not a separate
+product or mandatory starting point. The homepage accepts typed goals and optional
+browser dictation before directing first-visit, concern, report and follow-through
+scenarios into the same task structure. Full medical profiles are not prerequisites.
+Report facts require review; they do not create medical conclusions or orders.
+
+Optional browser-service dictation is an explicit exception to the default local
+input-processing boundary: audio already contains spoken content, may leave through
+the browser's service, and provider retention/use/deletion is not controlled by the
+app. On-device mode never silently falls back. See `docs/VOICE_PRIVACY.md` and STATUS
+for actual implementation, evidence and unresolved real-browser acceptance.

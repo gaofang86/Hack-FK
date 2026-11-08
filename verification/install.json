@@ -1,14 +1,15 @@
 {
   "passed": true,
-  "checked_at_utc": "2026-11-08T07:15:15.264003+00:00",
+  "checked_at_utc": "2026-11-08T09:05:33.892672+00:00",
   "scope": "Fresh temporary source copy and virtual environment; no .env, patient vault, model or real API credentials copied.",
   "python": "3.13.3",
-  "elapsed_seconds": 20.0,
-  "tests": "----------------------------------------------------------------------\nRan 104 tests in 11.037s\n\nOK",
+  "elapsed_seconds": 7.8,
+  "tests": "----------------------------------------------------------------------\nRan 112 tests in 4.283s\n\nOK",
   "network_import_audit": true,
   "javascript_syntax": true,
   "privacy_receiver": true,
   "navigation_ui_checks": true,
+  "browser_dictation_fakes_only": true,
   "installed_dependencies": [
     "cffi==2.1.1",
     "cryptography==50.0.2",
@@ -17,6 +18,7 @@
     "python-dotenv==1.2.4"
   ],
   "outside_this_check": [
+    "real browser dictation, microphone permissions and vendor retention/use",
     "real Tavily/Exa APIs (see STATUS.md)",
     "Ollama (see verification/ollama.json)",
     "target-user interviews",

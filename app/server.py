@@ -9,6 +9,7 @@ import threading
 import time
 from urllib.parse import parse_qs, urlparse
 
+from . import journeys, reports
 from .agent import CareAgent
 from .benefits import clean_plan, number
 from .catalog import candidates
@@ -41,6 +42,7 @@ class App:
         self.agent = CareAgent(LocalModel(self.egress, self.cfg, model_name=self.cfg.ollama_agent_model))
         self.mutex = threading.RLock()
         self.previews = {}
+        self.report_previews = {}
 
     def state(self):
         summaries = []
@@ -49,6 +51,10 @@ class App:
                               created=c["created"], demo=c["input"]["demo"], status=c.get("status", "comparing"),
                               next_action=next_action(c, ranked(c)))
                          for c in self.store.data["cases"].values() if "input" in c]
+            for c in self.store.data['cases'].values():
+                if 'input' not in c:
+                    summaries.append(dict(id=c['id'], city='', service=journeys.KINDS.get(c.get('kind'), 'Care task'),
+                                          created=c['created'], demo=False, status=c['status'], next_action=journeys.next_step(c)))
         return dict(unlocked=self.store.unlocked, vault_exists=self.store.exists(), offline=self.egress.offline,
                     preview_mode=getattr(self, "preview_mode", False),
                     services=self.cfg.services(), cases=sorted(summaries, key=lambda c: -c["created"]), today=date.today().isoformat(),
@@ -64,12 +70,25 @@ class App:
         rows = ranked(case)
         return dict(case, results=rows, next_action=next_action(case, rows), scenario=guidance(case["input"]), sources=describe_all(case["input"]), plan_reference=student_reference(case["input"]))
 
+    def get_journey(self, ident):
+        case = self.store.require()['cases'].get(ident)
+        if not case:
+            raise ValueError('Care task not found')
+        return case
+
+    def journey_view(self, case):
+        attached = [self.store.data.get('reports', {})[rid] for rid in case.get('report_ids', []) if rid in self.store.data.get('reports', {})]
+        notice = safety_check(dict(checks=[], description=case.get('goal', '')))
+        return dict(case, reports=attached, safety_notice=notice if notice['level'] in ('emergency', 'same_day') else None, personal_preparation=journeys.preparation(case, attached),
+                    next_action=next_action(case, ranked(case)) if 'input' in case else journeys.next_step(case))
+
     def dispatch(self, method, path, body, query):
         with self.mutex:
             if (self.store.unlocked and not getattr(self, "preview_mode", False)
                     and time.time() - self.store.last_activity > self.cfg.idle_lock_minutes * 60):
                 self.store.lock_vault()
                 self.agent.clear()
+                self.report_previews.clear()
             if path == "/api/state" and method == "GET":
                 return self.state()
             if path in ("/api/vault/create", "/api/vault/unlock") and method == "POST":
@@ -91,6 +110,7 @@ class App:
                     raise ValueError("Confirm that you want to erase the saved profile")
                 self.previews.clear()
                 self.agent.clear()
+                self.report_previews.clear()
                 self.store.wipe()
                 return self.state()
             self.store.require()
@@ -98,7 +118,59 @@ class App:
             if path == "/api/vault/lock" and method == "POST":
                 self.previews.clear()
                 self.agent.clear()
+                self.report_previews.clear()
                 self.store.lock_vault()
+                return self.state()
+            if path == '/api/journeys' and method == 'POST':
+                if len(self.store.data['cases']) >= 100:
+                    raise ValueError('This vault supports up to 100 care tasks')
+                case = journeys.create(body, secrets.token_hex(8))
+                self.store.data['cases'][case['id']] = case
+                self.store.save()
+                return self.journey_view(case)
+            if path == '/api/journey' and method == 'GET':
+                return self.journey_view(self.get_journey(query.get('id', [''])[0]))
+            if path == '/api/journey' and method == 'POST':
+                case = self.get_journey(body.get('id'))
+                goal = text(body.get('goal'), 2000)
+                if not goal:
+                    raise ValueError('Add your goal')
+                case['goal'] = goal
+                self.store.save()
+                return self.journey_view(case)
+            if path == '/api/reports/preview' and method == 'POST':
+                case = self.get_journey(body.get('journey_id'))
+                parsed = reports.parse_upload(body)
+                token = secrets.token_urlsafe(24)
+                self.report_previews = {k:v for k,v in self.report_previews.items() if time.time()-v['at'] < 600}
+                if len(self.report_previews) >= 10:
+                    self.report_previews.pop(next(iter(self.report_previews)))
+                self.report_previews[token] = dict(report=parsed, journey_id=case['id'], at=time.time())
+                return dict(parsed, token=token)
+            if path == '/api/reports/confirm' and method == 'POST':
+                preview = self.report_previews.get(body.get('token'))
+                if not preview or time.time()-preview['at'] > 600:
+                    raise ValueError('Report preview expired; import and review it again')
+                case = self.get_journey(preview['journey_id'])
+                if len(self.store.data.get('reports', {})) >= 20:
+                    raise ValueError('This vault supports up to 20 reports')
+                report = reports.reviewed(preview['report'], body, secrets.token_hex(8))
+                self.store.data.setdefault('reports', {})[report['id']] = report
+                case.setdefault('report_ids', []).append(report['id'])
+                self.report_previews.pop(body['token'])
+                self.store.save()
+                return self.journey_view(case)
+            if path == '/api/reports/forget' and method == 'POST':
+                rid = body.get('report_id')
+                self.store.data.get('reports', {}).pop(rid, None)
+                for case in self.store.data['cases'].values():
+                    if rid in case.get('report_ids', []):
+                        case.pop('preparation', None)
+                    case['report_ids'] = [r for r in case.get('report_ids', []) if r != rid]
+                self.report_previews.clear()
+                self.previews.clear()
+                self.agent.clear()
+                self.store.save()
                 return self.state()
             if path == "/api/profile" and method == "GET":
                 return health_view(self.store.data["profile"])
@@ -171,6 +243,7 @@ class App:
                 return health_view(self.store.data["profile"])
             if path == "/api/profile/forget" and method == "POST":
                 self.agent.clear()
+                self.report_previews.clear()
                 profile, field, value = self.store.data["profile"], body.get("field"), text(body.get("value"), 200)
                 if field in ("conditions", "allergies", "medications"):
                     profile[field] = [v for v in profile.get(field, []) if v != value]
@@ -189,6 +262,7 @@ class App:
                     profile["visits"] = []
                 elif field == "everything":
                     keep = {k: profile[k] for k in ("city", "state", "zip") if k in profile}
+                    self.store.data["reports"] = {}
                     profile.clear(); profile.update(keep)
                     self.store.data["cases"] = {}
                 else:
@@ -218,7 +292,17 @@ class App:
                 queries = [] if person["demo"] else plan_queries(venue, public, self.places.providers())
                 self.previews = {k: v for k, v in self.previews.items() if time.time() - v["at"] < 600}
                 token = secrets.token_urlsafe(24)
-                self.previews[token] = dict(input=person, queries=queries, public=public, at=time.time())
+                journey_id = body.get('journey_id') or ''
+                if journey_id:
+                    existing = self.get_journey(journey_id)
+                    notice = safety_check(dict(checks=[], description=existing.get('goal', '')))
+                    if notice['level'] == 'emergency':
+                        raise ValueError(notice['headline'])
+                    if notice['level'] == 'same_day' and person['service'] != 'same_day':
+                        raise ValueError('Review the same-day care warning before finding care')
+                    if 'input' in existing:
+                        raise ValueError('This task already has a shortlist; edit preferences or create a new task')
+                self.previews[token] = dict(input=person, queries=queries, public=public, at=time.time(), journey_id=journey_id)
                 return dict(token=token, queries=[dict(provider=q["provider"], query=q["q"]) for q in queries],
                             destinations=sorted(self.cfg.allowed_hosts()) if queries else [], demo=person["demo"],
                             expect=expectations(person))
@@ -229,11 +313,17 @@ class App:
                 if body.get("approved") is not True:
                     raise ValueError("Review and approve this search first")
                 person = preview["input"]
-                ident = secrets.token_hex(8)
-                case = dict(id=ident, input=person, created=time.time(), status="comparing", contact={},
+                existing = self.get_journey(preview['journey_id']) if preview.get('journey_id') else {}
+                if 'input' in existing:
+                    raise ValueError('This task already has a shortlist')
+                ident = existing.get('id') or secrets.token_hex(8)
+                case = dict(id=ident, input=person, created=existing.get('created', time.time()), status="comparing", contact={},
                             description=person["description"], symptom_terms=[person["history"], person["medications"],
                                            *symptom_terms((person.get("safety") or {}).get("checks", []))],
                             providers=candidates(person["city"], person["state"], person["demo"], person["service"]), errors=[])
+                for key in ('goal', 'kind', 'report_ids'):
+                    if key in existing:
+                        case[key] = existing[key]
                 self.store.data["cases"][ident] = case
                 # The profile is never overwritten by a search; this case's own private text is registered above.
                 self.store.save()
@@ -336,6 +426,8 @@ class App:
                 result = {"text": fallback, "source": "built-in template"}
                 if body.get("use_model") is True:
                     result = self.model.bilingual_script(lines, person["language"], fallback)
+                if case.get('goal') or case.get('report_ids'):
+                    result['personal_note'] = self.journey_view(case)['personal_preparation']
                 case["preparation"] = dict(result, created=time.time(), draft=True, provider_id=provider["id"] if provider else None)
                 self.store.save()
                 return case["preparation"]
@@ -356,7 +448,7 @@ def make_handler(app):
             self.send_header("Content-Security-Policy", CSP)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Permissions-Policy", "geolocation=(self)")
+            self.send_header("Permissions-Policy", "geolocation=(self), microphone=(self)")
             self.end_headers()
             self.wfile.write(raw)
 
@@ -374,7 +466,7 @@ def make_handler(app):
                     return self.send(403, {"error": "Missing local application header"})
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
-                    limit = 8_500_000 if parsed.path == "/api/plan/sbc" else 100000
+                    limit = 8_500_000 if parsed.path in ("/api/plan/sbc", "/api/reports/preview") else 100000
                     if not 0 <= length <= limit:
                         return self.send(413, {"error": "Request is too large"})
                     self.connection.settimeout(10)
@@ -391,7 +483,7 @@ def make_handler(app):
                     return self.send(500, {"error": "The local operation failed. Your saved information is still in the vault."})
             if self.command != "GET":
                 return self.send(405, {"error": "Method not allowed"})
-            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/navigation.js": "navigation.js", "/styles.css": "styles.css"}
+            assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/navigation.js": "navigation.js", "/dictation.js": "dictation.js", "/i18n.js": "i18n.js", "/styles.css": "styles.css"}
             file = assets.get(parsed.path)
             if not file:
                 return self.send(404, {"error": "Not found"})
@@ -417,6 +509,7 @@ def serve(app=None, block=True):
                     app.store.lock_vault()
                     app.previews.clear()
                     app.agent.clear()
+                    app.report_previews.clear()
 
     threading.Thread(target=idle, daemon=True).start()
     if not block:

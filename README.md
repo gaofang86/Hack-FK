@@ -1,5 +1,7 @@
 # FirstVisit
 
+**Optional browser dictation:** spoken content may be sent to a browser-selected provider. FirstVisit cannot guarantee provider retention, training exclusion or deletion. On-device mode requires browser support and never silently falls back. See [voice privacy boundary](docs/VOICE_PRIVACY.md).
+
 Product goals and acceptance criteria: [PLAN.md](PLAN.md) ([English](PLAN.en.md)). Current validation and remaining work: [STATUS.md](STATUS.md).
 
 **A private health companion for people new to US healthcare.** FirstVisit starts with you and your health. It keeps an encrypted health profile on your own computer, tells you what to do next, helps you choose where to go and what it will cost, and gets more useful after every visit.
@@ -119,7 +121,7 @@ In a visit, choose **Prepare this visit → Use my local model**. If the model i
 
 ## Privacy
 
-- Every outbound app request goes through `app/egress.py`. It checks the destination and the offline switch, URL-decodes and scans URLs, headers and bodies for your private values, refuses redirects, and records sent, blocked and failed attempts in a ledger.
+- Every outbound app-backend request goes through `app/egress.py`. Optional browser-service dictation is a separate browser-controlled path outside this gateway and ledger. It checks the destination and the offline switch, URL-decodes and scans URLs, headers and bodies for your private values, refuses redirects, and records sent, blocked and failed attempts in a ledger.
 - Protected values include your profile (conditions, medications, allergies, follow-ups), visit reasons and notes, and the symptoms you picked.
 - The local model only accepts loopback addresses and bypasses HTTP proxies.
 - The app loads no third-party scripts, fonts, analytics or images, and keeps no health data in browser storage.
@@ -172,7 +174,8 @@ python3 -m unittest discover -v
 python3 scripts/audit_egress.py
 node --check static/app.js
 node --check static/navigation.js
-node --test tests/test_navigation_ui.cjs tests/test_personalized_ui.cjs
+node --check static/dictation.js
+node --test tests/test_navigation_ui.cjs tests/test_personalized_ui.cjs tests/test_care_today_ui.cjs tests/test_dictation.cjs tests/test_home_journey_ui.cjs
 ```
 
 The Python suite includes the local care agent as well as the following workflows. Tests cover safety rules and the emergency block, the care-today path, cost math, the what-to-expect illustration, SBC reading (including PDFs whose text splits words across lines), Zocdoc link building (IDs, unknown plans, no health details in the URL), the profile (rules, refills, follow-ups, persistence, forgetting), visit recording, A/B/C guidance and plan comparison, the encrypted vault, the DLP filter, the local-model fallback and line-by-line translation, and HTTP hardening (cross-origin and DNS-rebinding checks, path traversal). The HTTP tests need permission to bind loopback ports.
@@ -223,8 +226,7 @@ Drafts expire after ten minutes, are superseded by the next turn for that journe
 and are invalidated by task changes. Locking or forgetting clears in-memory drafts.
 Conversation text is not saved; only reviewed evidence spans become encrypted office
 records. There is no cloud fallback. This is a bounded, single-turn tool router,
-not an autonomous medical advisor. Microphone, transcription and speech playback
-are not implemented in this first stage.
+not an autonomous medical advisor. The unified homepage now adds optional browser dictation as a separate input feature; speech playback and autonomous voice conversation are not implemented.
 
 ```sh
 python3 scripts/verify_agent.py
@@ -251,3 +253,66 @@ OS-wide isolation, actual clinic contacts or real insurance participation.
   actions after office replies or preferences change.
 - Navigation state has Node regression coverage; a browser visual pass still needs
   Computer Use permission and is not claimed by these unit checks.
+
+## Unified homepage, task scenarios and optional lab reports
+
+Start with a goal rather than a complete health profile. First visit, current concern,
+report preparation and follow-through create the same care-task record. No report is
+required, including when the report starting point is chosen. A passphrase is needed
+only to save the first task. Relevant age/coverage questions remain in the care-search
+flow; this homepage does not replace the fixed safety checks.
+
+A task can be prepared without searching. When finding care, the existing intake,
+disclosure preview, provider shortlist, preferences, confirmations and visit feedback
+extend that same task ID. Personal goals and linked reports remain available from
+results. A reported warning in the goal cannot bypass the emergency/same-day guard.
+
+**Add lab PDF** supports a bounded text-export format and the FirstVisit demo copy,
+not arbitrary reports, scans or OCR. It previews source facts and verbatim evidence;
+reviewers may correct or omit each item before confirmation. The original PDF is not
+retained. Reviewed rows and source fingerprints are encrypted in the vault. Report
+flags never create diagnoses, follow-up orders or appointments. Personal clinician
+notes include linked facts; booking scripts and public searches do not. Forgetting a
+report clears its links and derived preparation. Current parser scope is deliberately
+explicit: an unsupported report does not prevent continuing the task without it.
+
+```sh
+python3 scripts/start_local_demo.py
+```
+
+Open http://127.0.0.1:8768. This uses a persistent encrypted vault outside the repo,
+asks for your own passphrase and loads no public-search credentials. It does not
+replace the separate disposable fictional preview on 8767. Select a report yourself;
+no real report is bundled or committed by this feature.
+
+Local report acceptance (output contains counts only, not lab values):
+
+```sh
+python3 scripts/verify_report_journey.py --pdf /absolute/path/to/local-report.pdf
+```
+
+See `verification/report-journey.json` for the controlled local report workflow, and
+`docs/VOICE_PRIVACY.md` for browser processing, content retention uncertainty and the
+limits of our ledger. Browser-service dictation needs explicit disclosure consent
+and is unavailable while the app's offline switch is on. It only appends editable text
+and never submits a task automatically. Real microphone and browser visual acceptance
+are separate from mocked API unit tests.
+
+## Interface language
+
+The header offers EN / 中文. English is the default, with a larger headline; Chinese
+uses a more compact type scale. Homepage copy is shown in one selected language,
+not as a bilingual subtitle pair. Interface preference is independent of care language
+and dictation language and is the only value stored under `firstvisit.ui-language`
+in browser localStorage. Switching updates text in place, preserving drafts and form
+values. If storage is unavailable, the selection still works for this page session.
+Clinical source text, report data, user-entered text, provider names and private
+preparation are preserved rather than automatically translated. Static interface
+copy uses a local catalog; no translation service receives page content.
+
+Homepage starting points now use everyday labels: find a regular doctor, a new
+health concern, discuss test results, and a next step recommended by a clinician.
+Each has a short description and a contextual writing prompt. Choosing one changes
+the prompt, not the user's words. The choice is optional: free-text-only requests
+use a general task and can still add reports or enter the health-needs flow later.
+Resuming an existing saved task is a separate control, not a follow-up category.

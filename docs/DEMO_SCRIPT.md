@@ -43,3 +43,19 @@ Turn offline mode on, then **turn Wi-Fi off on camera** (show the menu bar). Reo
 “Local profiles, task continuity, candidate intake, dated confirmations and deterministic comparisons work. Real sources are separated from fictional demonstration data. Exa and Tavily were tested with a synthetic public query, and the local model translates call scripts with Wi-Fi off. Current-year NUSHP cost sharing, exact physician network and real appointment availability still need confirmation.”
 
 Show user-test findings only after actual trials. Otherwise say user validation is pending. Do not claim completed bookings, savings, paying customers or clinical validation.
+
+## Unified homepage demonstration
+
+1. Start `python3 scripts/start_local_demo.py` and open localhost:8768. First show
+   that a person without a report can create a first-visit task, prepare questions,
+   and proceed to the existing care intake without completing an entire profile.
+2. Create a separate report-preparation task. Select the locally held redacted demo
+   PDF, review its extracted rows, and confirm. Keep the raw source outside the repo.
+3. Show the task goal, linked report, personal clinician note and separate booking
+   questions. Finding care continues the same saved task rather than replacing it.
+4. Show the query disclosure and app gateway privacy view. Never present zero gateway
+   requests as proof of zero browser voice traffic or OS-wide isolation.
+5. Optional dictation: on-device requires installed browser support; otherwise type.
+   Browser-service recognition needs the separate disclosure and explicit consent.
+   State that spoken content can leave and vendor retention/use cannot be guaranteed.
+   Do not narrate a real microphone/browser pass unless it was actually observed.
