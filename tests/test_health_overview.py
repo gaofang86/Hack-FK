@@ -8,7 +8,7 @@ import unittest
 
 from app.config import Config
 from app.server import App
-from app.health_overview import overview, expected_use, plan_direction, FLAG_NOTE, UNKNOWN
+from app.health_overview import overview, expected_use, plan_direction, report_digest, FLAG_NOTE, UNKNOWN
 from app.scenarios import NEEDS, compare_plans
 
 DEMO = Path(__file__).resolve().parent.parent / "docs" / "demo" / "firstvisit-lab-demo.pdf"
@@ -44,6 +44,32 @@ class OverviewRules(unittest.TestCase):
         text = json.dumps(out).lower()
         for word in FORBIDDEN:
             self.assertNotIn(word, text)
+
+    def test_report_digest_counts_only_the_reports_own_flags(self):
+        rows = [{"name": "Marker A", "result": "0.52 mg/dL", "reference": "0.57-1.00", "flag": "Low"},
+                {"name": "Marker B", "result": "12", "reference": "1-5", "flag": "High"},
+                {"name": "Marker C", "result": "500", "reference": "1-5", "flag": ""},  # unflagged stays unflagged
+                {"name": "Marker D", "result": "132", "reference": ">59", "flag": ""}]
+        d = report_digest(rows)
+        self.assertEqual((d["total"], d["not_flagged"], d["low"], d["high"]), (4, 2, 1, 1))
+        self.assertEqual([f["name"] for f in d["flagged"]], ["Marker A", "Marker B"])
+        self.assertEqual(d["flagged"][0]["position"], {"low": "0.57", "high": "1.00", "pct": 19.2})
+        self.assertEqual(d["flagged"][1]["position"]["pct"], 100)  # clamped to the end of the scale
+        self.assertIsNone(report_digest([{"name": "X", "result": "high", "reference": ">59", "flag": "High"}])["flagged"][0]["position"])
+        self.assertEqual(d["note"], FLAG_NOTE)
+        for word in FORBIDDEN:
+            self.assertNotIn(word, json.dumps(d).lower())
+
+    def test_my_health_keeps_full_results_and_visit_history(self):
+        rows = [{"name": "Marker A", "result": "0.52", "reference": "0.57-1.00", "flag": "Low", "evidence": "raw"}]
+        visits = [{"date": "2026-11-02", "reason": "SYNTHETIC checkup", "place": "Clinic", "notes": "",
+                   "added": {"medications": [], "follow_ups": ["Recheck"], "conditions": [], "completed": []}},
+                  {"date": "2026-09-01", "reason": "SYNTHETIC first visit", "place": "", "notes": "", "added": {}}]
+        out = overview({"visits": visits}, [report(rows)], TODAY)["overview"]
+        rep = out["reports"][0]
+        self.assertEqual(rep["results"], [{"name": "Marker A", "result": "0.52", "reference": "0.57-1.00", "flag": "Low"}])
+        self.assertEqual(rep["digest"]["low"], 1)
+        self.assertEqual([v["reason"] for v in out["visit_history"]], ["SYNTHETIC checkup", "SYNTHETIC first visit"])
 
     def test_flags_are_never_derived_from_numbers(self):
         # Outside the range but the report printed no flag: nothing is listed.

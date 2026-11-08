@@ -61,3 +61,16 @@ test('the shared report review screen saves My health reports to My health',()=>
  assert.ok(review.includes("if(draft.for_health){S.overview=await api('/api/health/reports/confirm',body)"));
  assert.ok(review.includes("S.view='health'"));
 });
+test('a saved report opens to an at-a-glance summary before its full results, and visits are listed',()=>{
+ const o=overview();
+ o.overview.reports=[{id:'r1',label:'firstvisit-lab-demo.pdf',reviewed_on:'2026-11-08',rows:2,flagged:1,
+  digest:{total:2,not_flagged:1,low:1,high:0,note:'n',flagged:[{name:'Creatinine',result:'0.52 mg/dL',reference:'0.57-1.00',flag:'Low',position:{low:'0.57',high:'1.00',pct:19.2}}]},
+  results:[{name:'Glucose',result:'98 mg/dL',reference:'70-99',flag:''},{name:'<b>Creatinine</b>',result:'0.52 mg/dL',reference:'0.57-1.00',flag:'Low'}]}];
+ o.overview.visit_history=[{date:'2026-11-02',reason:'SYNTHETIC checkup',place:'Clinic',notes:'',added:{follow_ups:['Recheck']}}];
+ const {c,app}=fixture(o);c.renderHealth();const html=app.innerHTML;
+ assert.ok(html.indexOf('At a glance')>0&&html.indexOf('At a glance')<html.indexOf('report-table'));
+ assert.ok(html.includes('range-dot at-20'));assert.ok(html.includes('1 Low · 0 High'));
+ assert.ok(html.indexOf('&lt;b&gt;Creatinine')<html.indexOf('Glucose'));  // flagged first, escaped
+ assert.ok(!html.includes('<b>Creatinine'));
+ assert.ok(html.includes('SYNTHETIC checkup')&&html.includes('Added: Recheck'));
+});

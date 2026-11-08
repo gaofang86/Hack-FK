@@ -19,6 +19,7 @@ from .benefits import clean_plan
 from .sbc import describe
 from .scenarios import SOURCES as SCENARIO_SOURCES, compare_plans
 from .student_plan import NUSHP
+from .health_overview import report_digest
 from .expect import SOURCES as EXPECT_SOURCES
 
 COVERAGES = ('insured', 'uninsured', 'choosing', 'not_sure')
@@ -496,7 +497,8 @@ def follow(m, profile, f, reports):
                     cost=[T('写下之后再算', 'Once you tell us')],
                     do_now=dict(text=T('选一类，写一句话。有化验单可以加 PDF。', 'Pick one and write a sentence. Add the lab PDF if you have one.'), script='', gloss=None),
                     unknown=[], then=T('该问谁、问什么', 'Who to ask and what'),
-                    clinics=[], calls=[], followup_form=True, report_upload=True, facts=facts, report_ids=report_ids, actions=[])
+                    clinics=[], calls=[], followup_form=True, report_upload=True, facts=facts, report_ids=report_ids, actions=[],
+                    digest=report_digest(facts) if facts else None)
     what, who, due = f['what'], f['who'], f['due']
     who_en, who_zh = who or 'your clinician’s office', who or '医生的诊所'
     by_en, by_zh = (f' by {due}', f'（{due} 前）') if due else ('', '')
@@ -559,6 +561,7 @@ def follow(m, profile, f, reports):
                 unknown=unknown, questions=questions,
                 then=T('就诊后：记录医生说了什么，新的随访会进待办', 'After the visit: record what was said; new follow-ups become to-dos'),
                 clinics=[], calls=[], report_upload=True, facts=facts, report_ids=report_ids,
+                digest=report_digest(facts) if facts else None,
                 todo=bool(due and what and f['type'] != 'results'), actions=actions)
 
 

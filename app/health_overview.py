@@ -39,11 +39,40 @@ def _coverage(profile):
     return "not_sure"
 
 
+RANGE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*[-\u2013]\s*(\d+(?:\.\d+)?)\s*$")
+NUMBER = re.compile(r"^\s*[<>]?\s*(\d+(?:\.\d+)?)")
+
+
+def _position(result, reference):
+    """Where the reported value sits against the report's own printed range, for a visual marker only.
+    The scale shows half a range beyond each end, so the range spans 25%-75%. None unless both are plain numbers."""
+    rng, val = RANGE.match(reference or ""), NUMBER.match(result or "")
+    if not rng or not val:
+        return None
+    low, high, value = float(rng[1]), float(rng[2]), float(val[1])
+    if high <= low:
+        return None
+    pct = (value - (low - (high - low) / 2)) / (2 * (high - low)) * 100
+    return {"low": rng[1], "high": rng[2], "pct": round(min(max(pct, 0), 100), 1)}
+
+
+def report_digest(rows):
+    """At-a-glance counts and the rows the report itself flagged. No interpretation or re-derived flags."""
+    flagged = [r for r in rows if r.get("flag") in ("Low", "High")]
+    return {"total": len(rows), "not_flagged": len(rows) - len(flagged),
+            "low": sum(r["flag"] == "Low" for r in flagged), "high": sum(r["flag"] == "High" for r in flagged),
+            "flagged": [{"name": r.get("name", ""), "result": r.get("result", ""), "reference": r.get("reference", ""),
+                         "flag": r["flag"], "position": _position(r.get("result"), r.get("reference"))} for r in flagged],
+            "note": FLAG_NOTE}
+
+
 def _report_summary(report):
-    flagged = [r for r in report.get("rows", []) if r.get("flag") in ("Low", "High")]
+    rows = report.get("rows", [])
+    digest = report_digest(rows)
     return {"id": report["id"], "label": report.get("label") or "Lab report",
             "reviewed_on": (report.get("source") or {}).get("reviewed_on", ""),
-            "rows": len(report.get("rows", [])), "flagged": len(flagged)}
+            "rows": len(rows), "flagged": len(digest["flagged"]), "digest": digest,
+            "results": [{k: r.get(k, "") for k in ("name", "result", "reference", "flag")} for r in rows]}
 
 
 def flagged_rows(reports):
@@ -157,6 +186,7 @@ def overview(profile, reports, today=None):
                 "conditions": profile.get("conditions") or [], "medications": profile.get("medications") or [],
                 "allergies": profile.get("allergies") or [], "follow_ups": profile.get("follow_ups") or [],
                 "reports": [_report_summary(r) for r in reports],
-                "last_visit": visits[0] if visits else None, "visits": len(visits)}
+                "last_visit": visits[0] if visits else None, "visits": len(visits),
+                "visit_history": [{k: v.get(k) for k in ("date", "reason", "place", "notes", "added")} for v in visits]}
     return {"overview": snapshot, "attention": attention(profile, reports, today),
             "plan_direction": plan_direction(profile, reports), "scope": SCOPE}
